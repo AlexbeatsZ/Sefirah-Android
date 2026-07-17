@@ -12,10 +12,12 @@
 - The app's TLS private key lives in Android Keystore and is non-exportable. A self-signed fork cannot update the official APK or preserve that key on the first migration; use one-time secure re-enrollment, then keep the fork signing key stable.
 - Existing Room migrations use `fallbackToDestructiveMigration(false)`; new schema changes must include explicit migrations and tests.
 - The new protocol is capability-gated so upstream clients never receive unknown polymorphic messages.
-- A Shizuku UserService bridge now probes shell clipboard and Bluetooth capabilities; Android compilation is pending permission to populate the user-level Gradle/dependency cache.
-- Local Android tooling is already sufficient for this project: Android Studio 2025.3.2, SDK platforms 36/36.1, platform-tools 37.0.0, accepted SDK licenses, and Scoop OpenJDK 17 are present. Build Tools 36.0.0 may be auto-downloaded because AGP 9.0 declares it as the default.
+- A Shizuku UserService bridge now probes shell clipboard and Bluetooth capabilities; Android compilation is pending, but use of the standard shared Gradle cache is now authorized.
+- Local Android tooling is sufficient for this project: Android Studio 2025.3.2, SDK platforms 36/36.1, platform-tools 37.0.0, accepted SDK licenses, and Scoop Temurin JDK 17.0.19 are present. Build Tools 36.0.0 may be auto-downloaded because AGP 9.0 declares it as the default.
 - Do not install Scoop `android-clt` on top of the current Android Studio SDK without planning a migration: its manifest sets `ANDROID_HOME` to the Scoop app directory, which would split the SDK across two roots. Install Android SDK Command-Line Tools into the existing SDK through Android Studio instead if headless `sdkmanager` use becomes necessary.
 - Use the checked-in Gradle Wrapper (9.3.0); a global Scoop Gradle installation is unnecessary and would currently resolve to a different version.
+- Treat any path shared across projects as global, even when it is under the user profile. Standard long-lived developer installations and caches are acceptable when their exact locations and cleanup boundaries are documented.
+- Temurin JDK 17 is installed at `C:\Users\Meta\scoop\apps\temurin17-jdk`; user `JAVA_HOME` and the first Java `Path` entry point to its `current` junction. The obsolete Scoop `openjdk17` package, directory, and stale `Path` entry were removed. Gradle 9.3 successfully launched on Temurin 17.0.19.
 
 # Task Board
 
@@ -25,6 +27,7 @@
 - [x] Add Bluetooth device catalog and handoff command execution with radio-cycle fallback.
 - [x] Add Android Shizuku setup status and three-endpoint handoff UI.
 - [x] Audit the local Android Studio, SDK, JDK, ADB, Gradle Wrapper, and Scoop package availability without changing global tools.
+- [x] Replace obsolete Scoop OpenJDK 17.0.2 with Temurin JDK 17.0.19, clean the old configuration, and verify Gradle 9.3 startup.
 - [ ] Add one-time secure re-enrollment flow and fixed-signing documentation.
 - [ ] Run unit/build tests after dependency-cache download is authorized, then validate on both Android 15 Xiaomi devices and both QCY headsets.
 - [ ] Commit and push the feature branch.
