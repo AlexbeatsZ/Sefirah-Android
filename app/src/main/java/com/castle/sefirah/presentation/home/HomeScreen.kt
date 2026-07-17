@@ -24,6 +24,7 @@ import com.castle.sefirah.presentation.home.components.DeviceControlCard
 import com.castle.sefirah.presentation.home.components.MediaCard
 import com.castle.sefirah.presentation.home.components.SelectedAudioDevice
 import com.castle.sefirah.presentation.home.components.SwipeableDevicesCard
+import com.castle.sefirah.presentation.home.components.HeadsetHandoffCard
 import com.castle.sefirah.presentation.main.ConnectionViewModel
 import kotlinx.coroutines.launch
 
@@ -40,6 +41,8 @@ fun HomeScreen(
     val audioDevices by viewModel.audioDevices.collectAsState()
     val actions by viewModel.actions.collectAsState()
     val batteryByDevice by viewModel.batteryByDevice.collectAsState()
+    val headsetConfiguration by viewModel.headsetConfiguration.collectAsState()
+    val headsetHandoffState by viewModel.headsetHandoffState.collectAsState()
 
     // Bottom sheet state
     val scope = rememberCoroutineScope()
@@ -85,6 +88,16 @@ fun HomeScreen(
                         },
                         navController = rootNavController
                     )
+                }
+
+                if (headsetConfiguration.headsets.isNotEmpty()) {
+                    item(key = "headset_handoff") {
+                        HeadsetHandoffCard(
+                            configuration = headsetConfiguration,
+                            state = headsetHandoffState,
+                            onSwitch = viewModel::switchHeadset,
+                        )
+                    }
                 }
 
                 if (actions.isNotEmpty()) {

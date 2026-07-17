@@ -10,7 +10,10 @@ data class PairedDevice(
     val address: String? = null,
     val port: Int? = null,
     val connectionState: ConnectionState = ConnectionState.Disconnected(),
+    val capabilities: Set<String> = emptySet(),
 ) : BaseRemoteDevice() {
+
+    fun supportsCapability(capability: String): Boolean = capability in capabilities
     
     /** Returns enabled addresses sorted by priority, or all addresses if none enabled */
     fun getAddressesToTry(): List<String> {
@@ -28,7 +31,8 @@ data class PairedDevice(
         else -> deviceId == other.deviceId && deviceName == other.deviceName &&
             address == other.address && addresses == other.addresses && avatar == other.avatar &&
             lastConnected == other.lastConnected && connectionState == other.connectionState &&
-            port == other.port && (certificate.contentEquals(other.certificate))
+            port == other.port && capabilities == other.capabilities &&
+            (certificate.contentEquals(other.certificate))
     }
 
     override fun hashCode(): Int {
@@ -40,6 +44,7 @@ data class PairedDevice(
         result = 31 * result + (lastConnected?.hashCode() ?: 0)
         result = 31 * result + connectionState.hashCode()
         result = 31 * result + (port ?: 0)
+        result = 31 * result + capabilities.hashCode()
         result = 31 * result + certificate.contentHashCode()
         return result
     }

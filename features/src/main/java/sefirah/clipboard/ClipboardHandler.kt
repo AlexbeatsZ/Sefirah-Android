@@ -15,12 +15,16 @@ import javax.inject.Singleton
 
 @Singleton
 class ClipboardHandler @Inject constructor(
-    private val context: Context
+    private val context: Context,
+    private val clipboardEventTracker: ClipboardEventTracker,
 ) {
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     
     fun setClipboard(clipboard: ClipboardInfo) {
         try {
+            if (clipboard.clipboardType == "text/plain") {
+                clipboardEventTracker.recordRemoteText(clipboard.content)
+            }
             val clip: ClipData = when {
                 clipboard.clipboardType == "text/plain" -> ClipData.newPlainText("Received clipboard", clipboard.content)
 

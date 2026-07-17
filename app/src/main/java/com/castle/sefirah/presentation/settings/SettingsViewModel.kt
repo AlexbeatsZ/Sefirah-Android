@@ -36,6 +36,8 @@ import sefirah.domain.interfaces.NetworkManager
 import sefirah.domain.interfaces.PreferencesRepository
 import sefirah.domain.model.LocalDevice
 import sefirah.network.NetworkDiscovery
+import sefirah.privileged.PrivilegedBridgeManager
+import sefirah.privileged.PrivilegedBridgeStatus
 import javax.inject.Inject
 
 private const val TAG = "SettingsViewModel"
@@ -47,8 +49,10 @@ class SettingsViewModel @Inject constructor(
     private val networkManager: NetworkManager,
     networkDiscovery: NetworkDiscovery,
     deviceManager: DeviceManager,
-    application: Application
+    application: Application,
+    private val privilegedBridgeManager: PrivilegedBridgeManager,
 ) : AndroidViewModel(application) {
+    val privilegedBridgeStatus: StateFlow<PrivilegedBridgeStatus> = privilegedBridgeManager.status
     val localDevice: StateFlow<LocalDevice?> = deviceManager.localDeviceFlow
 
     val networkList: StateFlow<List<NetworkEntity>> = appRepository
@@ -77,6 +81,7 @@ class SettingsViewModel @Inject constructor(
 
 
     init {
+        privilegedBridgeManager.start()
         updatePermissionStates()
         
         viewModelScope.launch {
@@ -100,6 +105,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             appEntry = preferencesRepository.readAppEntry()
         }
+    }
+
+    fun requestPrivilegedAccess() {
+        privilegedBridgeManager.requestPermission()
     }
 
     fun updateDeviceName(newName: String) {

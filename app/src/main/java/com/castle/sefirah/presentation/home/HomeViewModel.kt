@@ -20,6 +20,9 @@ import sefirah.domain.interfaces.NetworkManager
 import sefirah.actions.ActionFeature
 import sefirah.media.RemotePlaybackFeature
 import sefirah.status.RemoteDeviceStatusFeature
+import sefirah.communication.bluetooth.BluetoothHandoffStore
+import sefirah.domain.model.BluetoothHandoffRequest
+import java.util.UUID
 import javax.inject.Inject
 
 @HiltViewModel
@@ -28,8 +31,12 @@ class HomeViewModel @Inject constructor(
     private val deviceManager: DeviceManager,
     private val networkManager: NetworkManager,
     actionFeature: ActionFeature,
-    remoteDeviceStatusFeature: RemoteDeviceStatusFeature
+    remoteDeviceStatusFeature: RemoteDeviceStatusFeature,
+    bluetoothHandoffStore: BluetoothHandoffStore,
 ) : ViewModel() {
+
+    val headsetConfiguration = bluetoothHandoffStore.configuration
+    val headsetHandoffState = bluetoothHandoffStore.state
 
     val batteryByDevice: StateFlow<Map<String, BatteryState>> =
         remoteDeviceStatusFeature.batteryByDevice
@@ -84,5 +91,20 @@ class HomeViewModel @Inject constructor(
         deviceManager.selectedDeviceId.value?.let { deviceId ->
             networkManager.sendMessage(deviceId, message)
         }
+    }
+
+    fun switchHeadset(headsetId: String, targetEndpointId: String) {
+        val coordinator = deviceManager.pairedDevices.value.firstOrNull {
+            it.connectionState.isConnected &&
+                it.supportsCapability(sefirah.domain.model.ProtocolCapabilities.BLUETOOTH_HANDOFF_V1)
+        } ?: return
+        networkManager.sendMessage(
+            coordinator.deviceId,
+            BluetoothHandoffRequest(
+                operationId = UUID.randomUUID().toString(),
+                headsetId = headsetId,
+                targetEndpointId = targetEndpointId,
+            ),
+        )
     }
 }

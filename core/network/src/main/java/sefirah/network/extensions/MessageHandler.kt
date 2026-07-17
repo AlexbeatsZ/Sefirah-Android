@@ -7,6 +7,10 @@ import sefirah.domain.model.AudioStreamState
 import sefirah.domain.model.BaseRemoteDevice
 import sefirah.domain.model.BatteryState
 import sefirah.domain.model.BluetoothPairingRequest
+import sefirah.domain.model.BluetoothDeviceCatalogRequest
+import sefirah.domain.model.BluetoothHandoffCommand
+import sefirah.domain.model.BluetoothHandoffConfiguration
+import sefirah.domain.model.BluetoothHandoffState
 import sefirah.domain.model.ClearNotifications
 import sefirah.domain.model.ClipboardInfo
 import sefirah.domain.model.DeviceInfo
@@ -66,6 +70,10 @@ suspend fun NetworkService.handleMessage(device: BaseRemoteDevice, message: Sock
                 is ActionInfo -> actionFeature.addAction(device.deviceId, message)
                 is BatteryState -> remoteDeviceStatusFeature.updateBattery(device.deviceId, message)
                 is BluetoothPairingRequest -> bluetoothPairingHandler.handleBluetoothRequest(device.deviceId)
+                is BluetoothDeviceCatalogRequest -> bluetoothHandoffHandler.handleCatalogRequest(device.deviceId, message)
+                is BluetoothHandoffCommand -> bluetoothHandoffHandler.handleCommand(device.deviceId, message)
+                is BluetoothHandoffConfiguration -> bluetoothHandoffStore.updateConfiguration(message)
+                is BluetoothHandoffState -> bluetoothHandoffStore.updateState(message)
                 else -> {}
             }
         }

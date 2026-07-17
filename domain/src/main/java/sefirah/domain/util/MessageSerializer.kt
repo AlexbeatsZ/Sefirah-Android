@@ -14,6 +14,13 @@ import sefirah.domain.model.Authentication
 import sefirah.domain.model.BatteryState
 import sefirah.domain.model.BluetoothPairingRequest
 import sefirah.domain.model.BluetoothPairingResult
+import sefirah.domain.model.BluetoothDeviceCatalog
+import sefirah.domain.model.BluetoothDeviceCatalogRequest
+import sefirah.domain.model.BluetoothHandoffCommand
+import sefirah.domain.model.BluetoothHandoffRequest
+import sefirah.domain.model.BluetoothHandoffResult
+import sefirah.domain.model.BluetoothHandoffState
+import sefirah.domain.model.BluetoothHandoffConfiguration
 import sefirah.domain.model.CallInfo
 import sefirah.domain.model.CallLogInfo
 import sefirah.domain.model.ClearNotifications
@@ -53,6 +60,13 @@ object MessageSerializer {
                 subclass(BatteryState::class)
                 subclass(BluetoothPairingResult::class)
                 subclass(BluetoothPairingRequest::class)
+                subclass(BluetoothDeviceCatalog::class)
+                subclass(BluetoothDeviceCatalogRequest::class)
+                subclass(BluetoothHandoffCommand::class)
+                subclass(BluetoothHandoffRequest::class)
+                subclass(BluetoothHandoffResult::class)
+                subclass(BluetoothHandoffState::class)
+                subclass(BluetoothHandoffConfiguration::class)
                 subclass(CallInfo::class)
                 subclass(CallLogInfo::class)
                 subclass(ClearNotifications::class)

@@ -18,6 +18,10 @@
 - Use the checked-in Gradle Wrapper (9.3.0); a global Scoop Gradle installation is unnecessary and would currently resolve to a different version.
 - Treat any path shared across projects as global, even when it is under the user profile. Standard long-lived developer installations and caches are acceptable when their exact locations and cleanup boundaries are documented.
 - Temurin JDK 17 is installed at `C:\Users\Meta\scoop\apps\temurin17-jdk`; user `JAVA_HOME` and the first Java `Path` entry point to its `current` junction. The obsolete Scoop `openjdk17` package, directory, and stale `Path` entry were removed. Gradle 9.3 successfully launched on Temurin 17.0.19.
+- Gradle does not automatically honor the shell's `HTTP_PROXY`/`HTTPS_PROXY`; local builds currently need project-invocation-only JVM proxy properties for `127.0.0.1:7897`. Do not persist this machine-specific proxy in tracked project files.
+- Shizuku API/provider 13.1.x requires minSdk 24. Pin both client artifacts to 13.0.0 to retain Sefirah's minSdk 23; all Shizuku APIs used by the privileged bridge are present in 13.0.0.
+- The first full Android build installed SDK Build Tools 36.0.0 at `C:\Users\Meta\AppData\Local\Android\Sdk\build-tools\36.0.0`. Gradle distributions and Maven dependencies are shared under `C:\Users\Meta\.gradle`; project build outputs remain under each module's `build` directory.
+- `test :app:assembleDebug` passes on Temurin 17.0.19 and Gradle 9.3.0. Four new unit tests pass, and the debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`; do not install this debug-signed APK over an existing official installation when preserving pairings.
 
 # Task Board
 
@@ -29,5 +33,6 @@
 - [x] Audit the local Android Studio, SDK, JDK, ADB, Gradle Wrapper, and Scoop package availability without changing global tools.
 - [x] Replace obsolete Scoop OpenJDK 17.0.2 with Temurin JDK 17.0.19, clean the old configuration, and verify Gradle 9.3 startup.
 - [ ] Add one-time secure re-enrollment flow and fixed-signing documentation.
-- [ ] Run unit/build tests after dependency-cache download is authorized, then validate on both Android 15 Xiaomi devices and both QCY headsets.
-- [ ] Commit and push the feature branch.
+- [x] Run unit tests and assemble the debug APK with the updated JDK/SDK toolchain.
+- [ ] Validate on both Android 15 Xiaomi devices and both QCY headsets after the signing/re-enrollment path is ready.
+- [x] Commit and push the feature branch.

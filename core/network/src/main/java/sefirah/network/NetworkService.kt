@@ -26,7 +26,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -34,11 +36,14 @@ import kotlinx.coroutines.withTimeoutOrNull
 import sefirah.actions.ActionFeature
 import sefirah.apps.AppListHandler
 import sefirah.clipboard.ClipboardHandler
+import sefirah.clipboard.ClipboardEventTracker
 import sefirah.common.notifications.AppNotifications
 import sefirah.common.notifications.NotificationCenter
 import sefirah.common.util.drawableToBase64Compressed
 import sefirah.common.util.isContactsPermissionGranted
 import sefirah.communication.bluetooth.BluetoothPairingHandler
+import sefirah.communication.bluetooth.BluetoothHandoffHandler
+import sefirah.communication.bluetooth.BluetoothHandoffStore
 import sefirah.communication.sms.SmsFeature
 import sefirah.communication.utils.ContactsHelper
 import sefirah.communication.utils.TelephonyHelper
@@ -61,6 +66,7 @@ import sefirah.domain.model.DiscoveredDevice
 import sefirah.domain.model.PairMessage
 import sefirah.domain.model.PairedDevice
 import sefirah.domain.model.PendingDeviceApproval
+import sefirah.domain.model.ProtocolCapabilities
 import sefirah.domain.model.SocketMessage
 import sefirah.domain.util.MessageSerializer
 import sefirah.network.extensions.cancelPairingVerificationNotification
@@ -69,6 +75,8 @@ import sefirah.network.extensions.setNotification
 import sefirah.network.extensions.showPairingVerificationNotification
 import sefirah.network.util.SslHelper
 import sefirah.notification.NotificationFeature
+import sefirah.privileged.PrivilegedBridgeManager
+import sefirah.privileged.PrivilegedBridgeStatus
 import sefirah.media.PlaybackFeature
 import sefirah.media.RemotePlaybackFeature
 import sefirah.status.DeviceControlHandler
@@ -91,6 +99,10 @@ class NetworkService : Service() {
     @Inject lateinit var notificationCenter: NotificationCenter
 
     @Inject lateinit var clipboardHandler: ClipboardHandler
+
+    @Inject lateinit var clipboardEventTracker: ClipboardEventTracker
+
+    @Inject lateinit var privilegedBridgeManager: PrivilegedBridgeManager
 
     @Inject lateinit var networkDiscovery: NetworkDiscovery
 
@@ -117,6 +129,10 @@ class NetworkService : Service() {
     @Inject lateinit var appListHandler: AppListHandler
 
     @Inject lateinit var bluetoothPairingHandler: BluetoothPairingHandler
+
+    @Inject lateinit var bluetoothHandoffHandler: BluetoothHandoffHandler
+
+    @Inject lateinit var bluetoothHandoffStore: BluetoothHandoffStore
 
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val binder = LocalBinder()
@@ -236,6 +252,7 @@ class NetworkService : Service() {
         super.onCreate()
 
         deviceControlHandler.start()
+        privilegedBridgeManager.start()
         registerReceiver(screenOnReceiver, IntentFilter(Intent.ACTION_SCREEN_ON))
         registerReceiver(wifiStateReceiver, IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION))
 
@@ -244,6 +261,29 @@ class NetworkService : Service() {
         scope.launch {
             tcpServerPort = startTcpServer()
             networkDiscovery.initialize(tcpServerPort)
+        }
+
+        scope.launch {
+            while (isActive) {
+                val hasConnectedPeer = deviceManager.pairedDevices.value.any {
+                    it.connectionState.isConnected
+                }
+                if (hasConnectedPeer && privilegedBridgeManager.status.value == PrivilegedBridgeStatus.Ready) {
+                    privilegedBridgeManager.readClipboardText()?.let { content ->
+                        clipboardEventTracker.recordLocalText(content)?.let { eventId ->
+                            sendClipboardMessage(
+                                ClipboardInfo(
+                                    clipboardType = "text/plain",
+                                    content = content,
+                                    eventId = eventId,
+                                    originDeviceId = deviceManager.localDevice.deviceId,
+                                ),
+                            )
+                        }
+                    }
+                }
+                delay(PRIVILEGED_CLIPBOARD_POLL_INTERVAL_MS)
+            }
         }
 
         scope.launch {
@@ -556,7 +596,12 @@ class NetworkService : Service() {
                 emptyList()
             }
 
-            val deviceInfo = DeviceInfo(deviceManager.localDevice.deviceName, wallpaper, localPhoneNumbers)
+            val deviceInfo = DeviceInfo(
+                deviceName = deviceManager.localDevice.deviceName,
+                avatar = wallpaper,
+                phoneNumbers = localPhoneNumbers,
+                capabilities = ProtocolCapabilities.local,
+            )
             sendMessage(device.deviceId, deviceInfo)
             Log.d(TAG, "DeviceInfo sent to ${device.deviceId}")
         } catch (e: Exception) {
@@ -633,7 +678,8 @@ class NetworkService : Service() {
     suspend fun handleDeviceInfo(deviceInfo: DeviceInfo, device: PairedDevice) {
         val updatedDevice = device.copy(
             deviceName = deviceInfo.deviceName,
-            avatar = deviceInfo.avatar
+            avatar = deviceInfo.avatar,
+            capabilities = deviceInfo.capabilities.toSet(),
         )
         deviceManager.addOrUpdatePairedDevice(updatedDevice)
         Log.d(TAG, "DeviceInfo updated for ${device.deviceId}")
@@ -847,5 +893,6 @@ class NetworkService : Service() {
         const val TAG = "NetworkService"
         const val DEVICE_ID_EXTRA = "device_id"
         const val EXTRA_CONNECTION_DETAILS = "extra_connection_details"
+        private const val PRIVILEGED_CLIPBOARD_POLL_INTERVAL_MS = 400L
     }
 }

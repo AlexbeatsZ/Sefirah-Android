@@ -16,6 +16,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import sefirah.domain.interfaces.NetworkManager
+import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.model.ClipboardInfo
 import javax.inject.Inject
 
@@ -23,16 +24,34 @@ import javax.inject.Inject
 class ClipboardChangeActivity : FragmentActivity() {
     @Inject lateinit var networkManager: NetworkManager
 
+    @Inject lateinit var deviceManager: DeviceManager
+
+    @Inject lateinit var clipboardEventTracker: ClipboardEventTracker
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         val clipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         lifecycleScope.launch {
             /** Seems like adding a delay is giving [ClipboardManager] time to capture
              *  clipboard text.
              */
-            delay(500)
+            delay(250)
             if (hasFocus) {
-                val data = clipboardManager.primaryClip?.getItemAt(0)?.text.toString()
-                networkManager.sendClipboardMessage(ClipboardInfo("text/plain", data))
+                val data = clipboardManager.primaryClip
+                    ?.takeIf { it.itemCount > 0 }
+                    ?.getItemAt(0)
+                    ?.coerceToText(this@ClipboardChangeActivity)
+                    ?.toString()
+                val eventId = data?.let(clipboardEventTracker::recordLocalText)
+                if (data != null && eventId != null) {
+                    networkManager.sendClipboardMessage(
+                        ClipboardInfo(
+                            clipboardType = "text/plain",
+                            content = data,
+                            eventId = eventId,
+                            originDeviceId = deviceManager.localDevice.deviceId,
+                        ),
+                    )
+                }
                 finish()
             }
         }

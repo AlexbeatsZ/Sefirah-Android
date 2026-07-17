@@ -5,6 +5,10 @@ plugins {
 android {
     namespace = "sefirah.features"
 
+    buildFeatures {
+        aidl = true
+    }
+
     packaging {
         resources {
             excludes += "/META-INF/versions/9/OSGI-INF/MANIFEST.MF"
@@ -38,4 +42,8 @@ dependencies {
     implementation(libs.apache.sshd.scp)
     implementation(libs.apache.sshd.mina)
     implementation(libs.apache.mina.core)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
+
+    testImplementation(libs.junit)
 }

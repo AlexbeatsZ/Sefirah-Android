@@ -53,6 +53,7 @@ import sefirah.common.R
 import sefirah.common.util.DEFAULT_RECYCLE_BIN_PATH
 import sefirah.common.util.getReadablePathFromUri
 import sefirah.common.util.openAppSettings
+import sefirah.privileged.PrivilegedBridgeStatus
 
 @Composable
 fun SettingsScreen(
@@ -67,6 +68,7 @@ fun SettingsScreen(
     val storageLocation by viewModel.storageLocation.collectAsState()
     val recycleBinLocation by viewModel.recycleBinLocation.collectAsState()
     val localDevice by viewModel.localDevice.collectAsState()
+    val privilegedBridgeStatus by viewModel.privilegedBridgeStatus.collectAsState()
 
     // State for device name dialog
     var showDeviceNameDialog by remember { mutableStateOf(false) }
@@ -136,6 +138,21 @@ fun SettingsScreen(
                     }
                 )   
 
+        }
+
+        item {
+            TextPreferenceWidget(
+                title = "Privileged Bluetooth & clipboard",
+                subtitle = when (privilegedBridgeStatus) {
+                    PrivilegedBridgeStatus.Ready -> "Shizuku connected"
+                    PrivilegedBridgeStatus.Binding -> "Connecting to Shizuku…"
+                    PrivilegedBridgeStatus.PermissionRequired -> "Tap to grant Shizuku permission"
+                    PrivilegedBridgeStatus.Unavailable -> "Start or install Shizuku, then tap here"
+                    PrivilegedBridgeStatus.Error -> "Shizuku connection failed; tap to retry"
+                },
+                icon = ImageVector.vectorResource(R.drawable.ic_settings_alert_fill),
+                onPreferenceClick = viewModel::requestPrivilegedAccess,
+            )
         }
 
         item {
