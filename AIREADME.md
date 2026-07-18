@@ -22,6 +22,8 @@
 - Shizuku API/provider 13.1.x requires minSdk 24. Pin both client artifacts to 13.0.0 to retain Sefirah's minSdk 23; all Shizuku APIs used by the privileged bridge are present in 13.0.0.
 - The first full Android build installed SDK Build Tools 36.0.0 at `C:\Users\Meta\AppData\Local\Android\Sdk\build-tools\36.0.0`. Gradle distributions and Maven dependencies are shared under `C:\Users\Meta\.gradle`; project build outputs remain under each module's `build` directory.
 - `test :app:assembleDebug` passes on Temurin 17.0.19 and Gradle 9.3.0. Four new unit tests pass, and the debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`; do not install this debug-signed APK over an existing official installation when preserving pairings.
+- Shizuku `13.6.0.r1086.2650830c` is installed on the Redmi K70 and its adb-mode server was started successfully. Sefirah has `API_V23` permission and binds a live shell-owned `com.castle.sefirah:privileged` UserService, so remaining Bluetooth failures are beyond Shizuku installation/authorization.
+- Shizuku cannot be replaced by silently embedding shell/root privilege in an ordinary APK. On a non-root device its server must be started again after reboot through ADB/wireless debugging; trusted-WLAN auto-start can reduce this burden but is still an explicit Shizuku/device configuration.
 
 # Task Board
 
@@ -35,4 +37,5 @@
 - [ ] Add one-time secure re-enrollment flow and fixed-signing documentation.
 - [x] Run unit tests and assemble the debug APK with the updated JDK/SDK toolchain.
 - [ ] Validate on both Android 15 Xiaomi devices and both QCY headsets after the signing/re-enrollment path is ready.
+- [x] Install Shizuku on the Redmi K70 and verify the Sefirah privileged UserService end to end.
 - [x] Commit and push the feature branch.
