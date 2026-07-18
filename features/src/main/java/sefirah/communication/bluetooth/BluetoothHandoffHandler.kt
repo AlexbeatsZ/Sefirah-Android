@@ -17,9 +17,11 @@ class BluetoothHandoffHandler @Inject constructor(
     private val privilegedBridgeManager: PrivilegedBridgeManager,
 ) {
     suspend fun handleCatalogRequest(sourceDeviceId: String, request: BluetoothDeviceCatalogRequest) {
-        val response = privilegedBridgeManager.getBluetoothCatalog()?.let { raw ->
+        val rawCatalog = privilegedBridgeManager.getBluetoothCatalog()
+        val parsedCatalog = rawCatalog?.let { raw ->
             runCatching { parseCatalog(request.requestId, JSONObject(raw)) }.getOrNull()
-        } ?: BluetoothDeviceCatalog(
+        }
+        val response = parsedCatalog ?: BluetoothDeviceCatalog(
             requestId = request.requestId,
             controllerAvailable = false,
             radioEnabled = false,

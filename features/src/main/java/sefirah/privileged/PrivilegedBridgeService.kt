@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothManager
 import android.content.ClipData
 import android.content.Context
 import android.os.IBinder
@@ -16,7 +17,9 @@ import java.util.concurrent.TimeUnit
 @Keep
 class PrivilegedBridgeService() : IPrivilegedBridge.Stub() {
     @Keep
-    constructor(@Suppress("UNUSED_PARAMETER") context: Context) : this()
+    constructor(context: Context) : this() {
+        BluetoothShellController.initialize(context)
+    }
 
     override fun destroy() {
         System.exit(0)
@@ -85,11 +88,25 @@ private object BluetoothShellController {
     private const val ACTION_CONNECT = "connect"
     private const val ACTION_DISCONNECT = "disconnect"
     private const val ACTION_SET_RADIO = "setRadio"
+    @Volatile
+    private var serviceContext: Context? = null
+    @Volatile
+    private var adapterLookupError: String? = null
+    @Volatile
+    private var shellAdapter: BluetoothAdapter? = null
+
+    fun initialize(context: Context) {
+        serviceContext = context
+    }
 
     @SuppressLint("MissingPermission")
     fun getCatalog(): String {
-        val adapter = BluetoothAdapter.getDefaultAdapter()
-            ?: return catalogError("bluetooth_unavailable", "Bluetooth adapter is unavailable")
+        val adapter = getAdapter()
+            ?: return catalogError(
+                "bluetooth_unavailable",
+                adapterLookupError?.let { "Bluetooth adapter is unavailable: $it" }
+                    ?: "Bluetooth adapter is unavailable",
+            )
 
         return runCatching {
             val devices = JSONArray()
@@ -118,8 +135,13 @@ private object BluetoothShellController {
 
     @SuppressLint("MissingPermission")
     fun execute(action: String, deviceKey: String?, enabled: Boolean): String {
-        val adapter = BluetoothAdapter.getDefaultAdapter()
-            ?: return commandResult(action, false, errorCode = "bluetooth_unavailable")
+        val adapter = getAdapter()
+            ?: return commandResult(
+                action,
+                false,
+                errorCode = "bluetooth_unavailable",
+                errorMessage = adapterLookupError,
+            )
 
         return runCatching {
             when (action) {
@@ -172,6 +194,64 @@ private object BluetoothShellController {
         }
         return process.exitValue() == 0
     }
+
+    private fun getAdapter(): BluetoothAdapter? {
+        serviceContext?.getSystemService(BluetoothManager::class.java)?.adapter?.let { return it }
+        shellAdapter?.let { return it }
+
+        return synchronized(this) {
+            shellAdapter ?: createShellAdapter()?.also { adapter ->
+                shellAdapter = adapter
+                adapterLookupError = null
+            } ?: BluetoothAdapter.getDefaultAdapter()
+        }
+    }
+
+    private fun createShellAdapter(): BluetoothAdapter? = runCatching {
+        val frameworkInitializer = Class.forName("android.bluetooth.BluetoothFrameworkInitializer")
+        val getServiceManager = frameworkInitializer
+            .getDeclaredMethod("getBluetoothServiceManager")
+            .apply { isAccessible = true }
+        if (getServiceManager.invoke(null) == null) {
+            val bluetoothServiceManagerClass = Class.forName("android.os.BluetoothServiceManager")
+            val bluetoothServiceManager = bluetoothServiceManagerClass
+                .getDeclaredConstructor()
+                .apply { isAccessible = true }
+                .newInstance()
+            frameworkInitializer
+                .getDeclaredMethod("setBluetoothServiceManager", bluetoothServiceManagerClass)
+                .apply { isAccessible = true }
+                .invoke(null, bluetoothServiceManager)
+        }
+
+        val serviceManager = Class.forName("android.os.ServiceManager")
+        val managerBinder = serviceManager
+            .getMethod("getService", String::class.java)
+            .invoke(null, "bluetooth_manager") as? IBinder
+            ?: error("bluetooth_manager binder is unavailable")
+        val managerStub = Class.forName("android.bluetooth.IBluetoothManager\$Stub")
+        val managerInterface = managerStub
+            .getMethod("asInterface", IBinder::class.java)
+            .invoke(null, managerBinder)
+
+        val attributionSourceClass = Class.forName("android.content.AttributionSource")
+        val builderClass = Class.forName("android.content.AttributionSource\$Builder")
+        val builder = builderClass.getConstructor(Int::class.javaPrimitiveType).newInstance(Process.myUid())
+        builderClass.getMethod("setPackageName", String::class.java).invoke(builder, "com.android.shell")
+        val attributionSource = builderClass.getMethod("build").invoke(builder)
+
+        BluetoothAdapter::class.java.declaredConstructors
+            .first { constructor ->
+                constructor.parameterTypes.size == 2 &&
+                    constructor.parameterTypes[0].name == "android.bluetooth.IBluetoothManager" &&
+                    constructor.parameterTypes[1] == attributionSourceClass
+            }
+            .apply { isAccessible = true }
+            .newInstance(managerInterface, attributionSource) as BluetoothAdapter
+    }.onFailure { error ->
+        val root = error.cause ?: error
+        adapterLookupError = "${root.javaClass.simpleName}: ${root.message}"
+    }.getOrNull()
 
     private fun supportsPerDeviceControl(): Boolean =
         BluetoothDevice::class.java.methods.any { it.name == ACTION_CONNECT && it.parameterCount == 0 } &&
