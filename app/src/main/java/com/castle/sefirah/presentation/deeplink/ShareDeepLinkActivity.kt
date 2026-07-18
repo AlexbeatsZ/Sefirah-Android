@@ -1,6 +1,5 @@
 package com.castle.sefirah.presentation.deeplink
 
-import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
@@ -8,7 +7,12 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import dagger.hilt.android.AndroidEntryPoint
+import com.castle.sefirah.R
+import com.castle.sefirah.presentation.common.DeviceSelectionDialog
+import com.castle.sefirah.presentation.common.DeviceSelectionOption
+import com.castle.sefirah.ui.theme.SefirahTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -143,15 +147,19 @@ class ShareDeepLinkActivity : ComponentActivity() {
             0 -> onSelected(null)
             1 -> onSelected(connectedDevices.first().deviceId)
             else -> {
-                val deviceNames = connectedDevices.map { it.deviceName }
-                AlertDialog.Builder(this)
-                    .setTitle("Send to device")
-                    .setItems(deviceNames.toTypedArray()) { dialog, which ->
-                        onSelected(connectedDevices[which].deviceId)
+                setContent {
+                    SefirahTheme {
+                        DeviceSelectionDialog(
+                            title = getString(R.string.send_to_device),
+                            options = connectedDevices.map {
+                                DeviceSelectionOption(it.deviceId, it.deviceName)
+                            },
+                            cancelLabel = getString(R.string.cancel),
+                            onSelected = { onSelected(it.id) },
+                            onDismiss = ::finishAffinity,
+                        )
                     }
-                    .setOnCancelListener {
-                        finishAffinity()
-                    }.show()
+                }
             }
         }
     }

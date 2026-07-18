@@ -62,7 +62,10 @@ fun MediaSessionSettingsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
+                        Icon(
+                            painterResource(R.drawable.ic_arrow_back),
+                            contentDescription = stringResource(R.string.back_button),
+                        )
                     }
                 },
             )

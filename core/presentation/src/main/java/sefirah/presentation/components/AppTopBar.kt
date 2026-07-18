@@ -16,6 +16,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.stringResource
+import sefirah.common.R
 
 @Composable
 fun AppTopBar(
@@ -46,16 +48,16 @@ fun AppTopBar(
                     onActiveChange = { active = it },
                     placeholder = {
                         if (selectedItem == 1) {
-                            Text(text = "Search Devices")
+                            Text(text = stringResource(R.string.search_devices))
                         } else {
-                            Text(text = "Search Settings")
+                            Text(text = stringResource(R.string.search_settings))
                         }
                     },
                     leadingIcon = {
                         if (!active) {
                             Icon(
                                 imageVector = Icons.Default.Search,
-                                contentDescription = "Search Icon"
+                                contentDescription = stringResource(R.string.search)
                             )
                         } else {
                             IconButton(onClick = {
@@ -64,7 +66,7 @@ fun AppTopBar(
                             }) {
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                    contentDescription = "Back icon"
+                                    contentDescription = stringResource(R.string.back_button)
                                 )
                             }
                         }
@@ -74,7 +76,7 @@ fun AppTopBar(
                             IconButton(onClick = { text = "" }) {
                                 Icon(
                                     imageVector = Icons.Default.Clear,
-                                    contentDescription = "Clear Icon"
+                                    contentDescription = stringResource(R.string.clear)
                                 )
                             }
                         }
@@ -87,7 +89,7 @@ fun AppTopBar(
                 IconButton(onClick = { active = true }) {
                     Icon(
                         imageVector = Icons.Default.Search,
-                        contentDescription = "Search Icon"
+                        contentDescription = stringResource(R.string.search)
                     )
                 }
             }

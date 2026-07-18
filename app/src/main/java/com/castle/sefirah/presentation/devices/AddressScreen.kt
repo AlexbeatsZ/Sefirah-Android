@@ -69,7 +69,10 @@ fun AddressScreen(
                 title = { Text(stringResource(R.string.manage_addresses_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), "Back")
+                        Icon(
+                            painterResource(R.drawable.ic_arrow_back),
+                            stringResource(R.string.back_button),
+                        )
                     }
                 }
             )
@@ -78,7 +81,10 @@ fun AddressScreen(
             FloatingActionButton(
                 onClick = { showAddDialog = true }
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add IP")
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = stringResource(R.string.add_ip_address),
+                )
             }
         }
     ) { paddingValues ->
@@ -209,7 +215,7 @@ private fun ReorderableCollectionItemScope.AddressListItem(
                 IconButton(onClick = onDelete) {
                     Icon(
                         imageVector = Icons.Outlined.Delete,
-                        contentDescription = "Delete",
+                        contentDescription = stringResource(R.string.delete),
                         tint = MaterialTheme.colorScheme.error
                     )
                 }

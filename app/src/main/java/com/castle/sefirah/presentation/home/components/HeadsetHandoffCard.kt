@@ -4,12 +4,16 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
@@ -23,7 +27,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -35,7 +38,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.castle.sefirah.R
+import com.castle.sefirah.presentation.common.DeviceSelectionDialog
+import com.castle.sefirah.presentation.common.DeviceSelectionOption
 import sefirah.domain.model.BluetoothEndpointDescriptor
 import sefirah.domain.model.BluetoothHandoffConfiguration
 import sefirah.domain.model.BluetoothHandoffState
@@ -47,11 +56,18 @@ private enum class BluetoothDeviceSection {
     SavedDisconnected,
 }
 
+private data class OtherDeviceSelectionRequest(
+    val headsetId: String,
+    val headsetName: String,
+    val options: List<DeviceSelectionOption>,
+)
+
 @Composable
 fun HeadsetHandoffCard(
     configuration: BluetoothHandoffConfiguration,
     state: BluetoothHandoffState?,
     selectedEndpointId: String?,
+    localEndpointId: String,
     onRefresh: () -> Unit,
     onDisconnect: (headsetId: String, endpointId: String) -> Unit,
     onSwitch: (headsetId: String, endpointId: String) -> Unit,
@@ -69,9 +85,8 @@ fun HeadsetHandoffCard(
             (it.endpointIds.isEmpty() || selectedEndpointId in it.endpointIds)
     }
     var expandedHeadsetId by rememberSaveable { mutableStateOf<String?>(null) }
-    var showOtherDevices by rememberSaveable { mutableStateOf(true) }
     var showVisibilityDialog by rememberSaveable { mutableStateOf(false) }
-    var switchRequest by remember { mutableStateOf<Pair<BluetoothHeadsetDescriptor, String>?>(null) }
+    var otherDeviceRequest by remember { mutableStateOf<OtherDeviceSelectionRequest?>(null) }
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -83,152 +98,123 @@ fun HeadsetHandoffCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(Icons.Default.Headphones, contentDescription = null)
+                Icon(
+                    Icons.Default.Bluetooth,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Bluetooth devices", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        endpointsById[selectedEndpointId]?.displayName ?: "No device selected",
+                        stringResource(R.string.bluetooth_devices),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        endpointsById[selectedEndpointId]?.displayName
+                            ?: stringResource(R.string.bluetooth_no_selected_device),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 if (busy) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
                 } else {
                     IconButton(onClick = onRefresh) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh Bluetooth devices")
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.bluetooth_refresh),
+                        )
                     }
                 }
                 IconButton(onClick = { showVisibilityDialog = true }) {
-                    Icon(Icons.Default.Settings, contentDescription = "Visible Bluetooth devices")
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = stringResource(R.string.bluetooth_visible_devices),
+                    )
                 }
             }
 
             BluetoothSection(
-                title = "Connected to selected device",
+                title = stringResource(R.string.bluetooth_connected_selected),
                 headsets = selectedConnected,
                 section = BluetoothDeviceSection.SelectedConnected,
-                endpointsById = endpointsById,
+                endpoints = configuration.endpoints,
                 selectedEndpointId = selectedEndpointId,
+                localEndpointId = localEndpointId,
                 expandedHeadsetId = expandedHeadsetId,
                 busy = busy,
                 onExpanded = { expandedHeadsetId = if (expandedHeadsetId == it) null else it },
                 onDisconnect = onDisconnect,
-                onSwitch = { headset, sourceEndpointId -> switchRequest = headset to sourceEndpointId },
-            )
-
-            HorizontalDivider()
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showOtherDevices = !showOtherDevices },
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "Connected to other devices",
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleSmall,
-                )
-                Icon(
-                    if (showOtherDevices) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (showOtherDevices) "Hide section" else "Show section",
-                )
-            }
-            AnimatedVisibility(showOtherDevices) {
-                BluetoothSection(
-                    title = null,
-                    headsets = otherConnected,
-                    section = BluetoothDeviceSection.OtherConnected,
-                    endpointsById = endpointsById,
-                    selectedEndpointId = selectedEndpointId,
-                    expandedHeadsetId = expandedHeadsetId,
-                    busy = busy,
-                    onExpanded = { expandedHeadsetId = if (expandedHeadsetId == it) null else it },
-                    onDisconnect = onDisconnect,
-                    onSwitch = { headset, _ ->
-                        selectedEndpointId?.let { onSwitch(headset.id, it) }
-                    },
-                )
-            }
-
-            HorizontalDivider()
-
-            BluetoothSection(
-                title = "Saved on selected device",
-                subtitle = "Not currently connected",
-                headsets = savedDisconnected,
-                section = BluetoothDeviceSection.SavedDisconnected,
-                endpointsById = endpointsById,
-                selectedEndpointId = selectedEndpointId,
-                expandedHeadsetId = expandedHeadsetId,
-                busy = busy,
-                onExpanded = { expandedHeadsetId = if (expandedHeadsetId == it) null else it },
-                onDisconnect = onDisconnect,
-                onSwitch = { headset, _ ->
-                    selectedEndpointId?.let { onSwitch(headset.id, it) }
+                onSwitch = onSwitch,
+                onSelectOther = { headset, targets ->
+                    otherDeviceRequest = OtherDeviceSelectionRequest(
+                        headset.id,
+                        headset.displayName,
+                        targets.map { DeviceSelectionOption(it.id, it.displayName) },
+                    )
                 },
             )
 
-            state?.message?.let { message ->
-                Text(message, style = MaterialTheme.typography.bodySmall)
-            }
-        }
-    }
+            HorizontalDivider()
 
-    switchRequest?.let { (headset, sourceEndpointId) ->
-        val targets = configuration.endpoints.filter { endpoint ->
-            endpoint.id != sourceEndpointId &&
-                (headset.endpointIds.isEmpty() || endpoint.id in headset.endpointIds)
+            BluetoothSection(
+                title = stringResource(R.string.bluetooth_connected_other),
+                headsets = otherConnected,
+                section = BluetoothDeviceSection.OtherConnected,
+                endpoints = configuration.endpoints,
+                selectedEndpointId = selectedEndpointId,
+                localEndpointId = localEndpointId,
+                expandedHeadsetId = expandedHeadsetId,
+                busy = busy,
+                onExpanded = { expandedHeadsetId = if (expandedHeadsetId == it) null else it },
+                onDisconnect = onDisconnect,
+                onSwitch = onSwitch,
+                onSelectOther = { headset, targets ->
+                    otherDeviceRequest = OtherDeviceSelectionRequest(
+                        headset.id,
+                        headset.displayName,
+                        targets.map { DeviceSelectionOption(it.id, it.displayName) },
+                    )
+                },
+            )
+
+            HorizontalDivider()
+
+            BluetoothSection(
+                title = stringResource(R.string.bluetooth_saved_disconnected),
+                headsets = savedDisconnected,
+                section = BluetoothDeviceSection.SavedDisconnected,
+                endpoints = configuration.endpoints,
+                selectedEndpointId = selectedEndpointId,
+                localEndpointId = localEndpointId,
+                expandedHeadsetId = expandedHeadsetId,
+                busy = busy,
+                onExpanded = { expandedHeadsetId = if (expandedHeadsetId == it) null else it },
+                onDisconnect = onDisconnect,
+                onSwitch = onSwitch,
+                onSelectOther = { _, _ -> },
+            )
+
+            val statusText = when (state?.status) {
+                "disconnecting" -> stringResource(R.string.bluetooth_status_disconnecting)
+                "connecting" -> stringResource(R.string.bluetooth_status_connecting)
+                "completed" -> stringResource(R.string.bluetooth_status_completed)
+                "failed" -> stringResource(R.string.bluetooth_status_failed)
+                else -> null
+            }
+            statusText?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
-        var selectedTargetId by remember(headset.id, sourceEndpointId) {
-            mutableStateOf(targets.firstOrNull()?.id)
-        }
-        AlertDialog(
-            onDismissRequest = { switchRequest = null },
-            title = { Text("Switch ${headset.displayName}") },
-            text = {
-                Column {
-                    targets.forEach { endpoint ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedTargetId = endpoint.id }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            RadioButton(
-                                selected = selectedTargetId == endpoint.id,
-                                onClick = { selectedTargetId = endpoint.id },
-                            )
-                            Text(endpoint.displayName)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = selectedTargetId != null,
-                    onClick = {
-                        selectedTargetId?.let { onSwitch(headset.id, it) }
-                        switchRequest = null
-                    },
-                ) { Text("Switch") }
-            },
-            dismissButton = {
-                TextButton(onClick = { switchRequest = null }) { Text("Cancel") }
-            },
-        )
     }
 
     if (showVisibilityDialog) {
         AlertDialog(
             onDismissRequest = { showVisibilityDialog = false },
-            title = { Text("Visible Bluetooth devices") },
+            title = { Text(stringResource(R.string.bluetooth_visible_devices)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Choose which saved devices appear on the Bluetooth card.",
+                        stringResource(R.string.bluetooth_visibility_description),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     configuration.headsets.forEach { headset ->
@@ -246,41 +232,66 @@ fun HeadsetHandoffCard(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { showVisibilityDialog = false }) { Text("Done") }
+                TextButton(onClick = { showVisibilityDialog = false }) {
+                    Text(stringResource(R.string.done))
+                }
             },
+        )
+    }
+
+    otherDeviceRequest?.let { request ->
+        DeviceSelectionDialog(
+            title = stringResource(R.string.bluetooth_select_target, request.headsetName),
+            options = request.options,
+            cancelLabel = stringResource(R.string.cancel),
+            onSelected = { target ->
+                otherDeviceRequest = null
+                onSwitch(request.headsetId, target.id)
+            },
+            onDismiss = { otherDeviceRequest = null },
         )
     }
 }
 
 @Composable
 private fun BluetoothSection(
-    title: String?,
+    title: String,
     headsets: List<BluetoothHeadsetDescriptor>,
     section: BluetoothDeviceSection,
-    endpointsById: Map<String, BluetoothEndpointDescriptor>,
+    endpoints: List<BluetoothEndpointDescriptor>,
     selectedEndpointId: String?,
+    localEndpointId: String,
     expandedHeadsetId: String?,
     busy: Boolean,
     onExpanded: (String) -> Unit,
     onDisconnect: (headsetId: String, endpointId: String) -> Unit,
-    onSwitch: (headset: BluetoothHeadsetDescriptor, sourceEndpointId: String) -> Unit,
-    subtitle: String? = null,
+    onSwitch: (headsetId: String, endpointId: String) -> Unit,
+    onSelectOther: (BluetoothHeadsetDescriptor, List<BluetoothEndpointDescriptor>) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        title?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
-        subtitle?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+        )
         if (headsets.isEmpty()) {
             Text(
-                "No devices",
+                stringResource(R.string.bluetooth_no_devices),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         headsets.forEach { headset ->
             val sourceEndpointId = headset.activeEndpointId ?: selectedEndpointId ?: return@forEach
-            val endpointName = endpointsById[sourceEndpointId]?.displayName ?: "Another device"
+            val supportsLocal = headset.supportsEndpoint(localEndpointId)
+            val supportsSelected = headset.supportsEndpoint(selectedEndpointId)
+            val otherTargets = endpoints.filter { endpoint ->
+                endpoint.id != sourceEndpointId &&
+                    endpoint.id != localEndpointId &&
+                    endpoint.id != selectedEndpointId &&
+                    headset.supportsEndpoint(endpoint.id)
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -289,18 +300,11 @@ private fun BluetoothSection(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(headset.displayName, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            if (section == BluetoothDeviceSection.SavedDisconnected) {
-                                "Saved on $endpointName"
-                            } else {
-                                "Connected to $endpointName"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text(
+                        headset.displayName,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
                     Icon(
                         if (expandedHeadsetId == headset.id) {
                             Icons.Default.KeyboardArrowUp
@@ -311,28 +315,117 @@ private fun BluetoothSection(
                     )
                 }
                 AnimatedVisibility(expandedHeadsetId == headset.id) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (section != BluetoothDeviceSection.SavedDisconnected) {
-                            OutlinedButton(
-                                enabled = !busy,
-                                onClick = { onDisconnect(headset.id, sourceEndpointId) },
-                            ) { Text("Disconnect") }
+                    val actionCount = when (section) {
+                        BluetoothDeviceSection.SelectedConnected -> 3
+                        BluetoothDeviceSection.OtherConnected -> 4
+                        BluetoothDeviceSection.SavedDisconnected -> 1
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        when (section) {
+                            BluetoothDeviceSection.SelectedConnected -> {
+                                CompactActionButton(
+                                    label = stringResource(R.string.bluetooth_switch_to_this_device),
+                                    enabled = !busy && sourceEndpointId != localEndpointId && supportsLocal,
+                                    onClick = { onSwitch(headset.id, localEndpointId) },
+                                )
+                                CompactActionButton(
+                                    label = stringResource(R.string.bluetooth_switch_to_other_device),
+                                    enabled = !busy && otherTargets.isNotEmpty(),
+                                    onClick = { onSelectOther(headset, otherTargets) },
+                                )
+                                CompactActionButton(
+                                    label = stringResource(R.string.disconnect),
+                                    enabled = !busy,
+                                    outlined = true,
+                                    onClick = { onDisconnect(headset.id, sourceEndpointId) },
+                                )
+                            }
+
+                            BluetoothDeviceSection.OtherConnected -> {
+                                CompactActionButton(
+                                    label = stringResource(R.string.bluetooth_switch_to_this_device),
+                                    enabled = !busy && sourceEndpointId != localEndpointId && supportsLocal,
+                                    onClick = { onSwitch(headset.id, localEndpointId) },
+                                )
+                                CompactActionButton(
+                                    label = stringResource(R.string.bluetooth_switch_to_selected_device),
+                                    enabled = !busy && selectedEndpointId != null &&
+                                        sourceEndpointId != selectedEndpointId && supportsSelected,
+                                    onClick = { selectedEndpointId?.let { onSwitch(headset.id, it) } },
+                                )
+                                CompactActionButton(
+                                    label = stringResource(R.string.bluetooth_switch_to_other_device),
+                                    enabled = !busy && otherTargets.isNotEmpty(),
+                                    onClick = { onSelectOther(headset, otherTargets) },
+                                )
+                                CompactActionButton(
+                                    label = stringResource(R.string.disconnect),
+                                    enabled = !busy,
+                                    outlined = true,
+                                    onClick = { onDisconnect(headset.id, sourceEndpointId) },
+                                )
+                            }
+
+                            BluetoothDeviceSection.SavedDisconnected -> {
+                                CompactActionButton(
+                                    label = stringResource(R.string.bluetooth_connect_to_selected_device),
+                                    enabled = !busy && selectedEndpointId != null && supportsSelected,
+                                    onClick = { selectedEndpointId?.let { onSwitch(headset.id, it) } },
+                                )
+                            }
                         }
-                        Button(
-                            enabled = !busy && selectedEndpointId != null,
-                            onClick = { onSwitch(headset, sourceEndpointId) },
-                        ) {
-                            Text(
-                                when (section) {
-                                    BluetoothDeviceSection.SelectedConnected -> "Switch connection"
-                                    BluetoothDeviceSection.OtherConnected -> "Switch here"
-                                    BluetoothDeviceSection.SavedDisconnected -> "Connect here"
-                                },
-                            )
+                        repeat(4 - actionCount) {
+                            Spacer(modifier = Modifier.weight(1f))
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private fun BluetoothHeadsetDescriptor.supportsEndpoint(endpointId: String?): Boolean =
+    endpointId != null && (endpointIds.isEmpty() || endpointId in endpointIds)
+
+@Composable
+private fun RowScope.CompactActionButton(
+    label: String,
+    enabled: Boolean,
+    outlined: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val modifier = Modifier
+        .weight(1f)
+        .heightIn(min = 40.dp)
+    val contentPadding = PaddingValues(horizontal = 0.dp, vertical = 6.dp)
+    val labelSize = 12.sp
+    val content: @Composable () -> Unit = {
+        Text(
+            text = label,
+            fontSize = labelSize,
+            letterSpacing = (-0.25).sp,
+            maxLines = 1,
+        )
+    }
+
+    if (outlined) {
+        OutlinedButton(
+            modifier = modifier,
+            enabled = enabled,
+            contentPadding = contentPadding,
+            onClick = onClick,
+            content = { content() },
+        )
+    } else {
+        Button(
+            modifier = modifier,
+            enabled = enabled,
+            contentPadding = contentPadding,
+            onClick = onClick,
+            content = { content() },
+        )
     }
 }

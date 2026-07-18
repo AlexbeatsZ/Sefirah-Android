@@ -17,8 +17,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import sefirah.common.R
 import sefirah.domain.model.AudioDeviceInfo
 import sefirah.domain.model.AudioInfoType
 
@@ -77,7 +79,7 @@ fun SelectedAudioDevice(
 
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Show all devices",
+                    contentDescription = stringResource(R.string.show_all_devices),
                     tint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -192,4 +194,4 @@ fun AudioDeviceBottomSheetPreview() {
             onToggleMute = { }
         )
     }
-} 
+}

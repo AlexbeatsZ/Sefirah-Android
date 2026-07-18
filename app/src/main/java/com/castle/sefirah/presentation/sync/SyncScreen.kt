@@ -50,7 +50,10 @@ fun SyncScreen(
                     title = { Text(text = stringResource(R.string.available_devices)) },
                     navigationIcon = {
                         IconButton(onClick = { rootNavController.navigateUp() }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                stringResource(R.string.back_button),
+                            )
                         }
                     },
                     actions = {
@@ -61,7 +64,7 @@ fun SyncScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = "Scan QR Code"
+                                contentDescription = stringResource(R.string.scan_qr_code)
                             )
                         }
                     }

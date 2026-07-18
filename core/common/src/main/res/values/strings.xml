@@ -78,7 +78,7 @@
     <string name="notification_access">Notification Access</string>
     <string name="notification_access_rationale">Required for notification synchronization</string>
     <string name="app_info">App info</string>
-    <string name="restricted_settings_instruction">Due to security restrictions, you\'ll need to: \n 1. Try to enable the \'%s\' \n 2. Tap \'ok\' on the warning and come back \n 3. Go to App Info \n 4. Open the overflow menu (3 dots) \n 5. Tap \'allow restricted settings\' \n 6. Go back and try again to enable the \'%s\'</string>
+    <string name="restricted_settings_instruction">Due to security restrictions, you\'ll need to: \n 1. Try to enable the \'%1$s\' \n 2. Tap \'ok\' on the warning and come back \n 3. Go to App Info \n 4. Open the overflow menu (3 dots) \n 5. Tap \'allow restricted settings\' \n 6. Go back and try again to enable the \'%2$s\'</string>
 
     <!-- Device Management -->
     <string name="status_connecting">Connecting</string>
@@ -205,4 +205,47 @@
     <string name="location_permission_dialog_message">Sefirah needs background location permission to know the WiFi network when the app is in the background. We only use it to get the WiFi name—nothing else from the location permission is used.</string>
     <string name="media_session_preference">Desktop media sessions</string>
 
+    <string name="action_lock">Lock screen</string>
+    <string name="action_hibernate">Hibernate</string>
+    <string name="action_logoff">Log off</string>
+    <string name="action_restart">Restart</string>
+    <string name="action_shutdown">Shut down</string>
+    <string name="action_sleep">Sleep</string>
+    <string name="show_more">Show more</string>
+    <string name="show_less">Show less</string>
+    <string name="confirm_action_title">Confirm action</string>
+    <string name="confirm_action_message">Are you sure you want to perform “%1$s”?</string>
+    <string name="confirm">Confirm</string>
+    <string name="set_timer_for">Set timer for %1$s</string>
+    <string name="hours">Hours</string>
+    <string name="minutes">Minutes</string>
+    <string name="seconds">Seconds</string>
+    <string name="privileged_bluetooth_clipboard">Privileged Bluetooth and clipboard</string>
+    <string name="shizuku_connected">Shizuku connected</string>
+    <string name="shizuku_connecting">Connecting to Shizuku…</string>
+    <string name="shizuku_permission_required">Tap to grant Shizuku permission</string>
+    <string name="shizuku_unavailable">Start or install Shizuku, then tap here</string>
+    <string name="shizuku_connection_failed">Shizuku connection failed; tap to retry</string>
+    <string name="dump_logs">Dump logs</string>
+    <string name="dump_logs_subtitle">Save diagnostic logs to your device</string>
+    <string name="stop_service_exit">Stop service and exit</string>
+    <string name="stop_service_exit_subtitle">Disconnect all devices, stop the service, and close the application</string>
+    <string name="connect_to_device">Connect to %1$s</string>
+    <string name="camera_permission_qr_required">Camera permission is required to scan QR codes. Please grant permission in settings.</string>
+    <string name="search_devices">Search devices</string>
+    <string name="search_settings">Search settings</string>
+    <string name="add_network">Add “%1$s”</string>
+    <string name="search">Search</string>
+    <string name="clear">Clear</string>
+    <string name="close">Close</string>
+    <string name="scan_qr_code">Scan QR code</string>
+    <string name="add_ip_address">Add IP address</string>
+    <string name="delete_device">Delete device</string>
+    <string name="profile_picture">Profile picture</string>
+    <string name="device_icon">Device icon</string>
+    <string name="show_all_devices">Show all devices</string>
+    <string name="volume">Volume</string>
+    <string name="skip_previous">Previous track</string>
+    <string name="skip_next">Next track</string>
+    <string name="donation">Donation</string>
 </resources>

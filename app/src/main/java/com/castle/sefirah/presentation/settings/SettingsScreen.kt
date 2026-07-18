@@ -142,13 +142,13 @@ fun SettingsScreen(
 
         item {
             TextPreferenceWidget(
-                title = "Privileged Bluetooth & clipboard",
+                title = stringResource(R.string.privileged_bluetooth_clipboard),
                 subtitle = when (privilegedBridgeStatus) {
-                    PrivilegedBridgeStatus.Ready -> "Shizuku connected"
-                    PrivilegedBridgeStatus.Binding -> "Connecting to Shizuku…"
-                    PrivilegedBridgeStatus.PermissionRequired -> "Tap to grant Shizuku permission"
-                    PrivilegedBridgeStatus.Unavailable -> "Start or install Shizuku, then tap here"
-                    PrivilegedBridgeStatus.Error -> "Shizuku connection failed; tap to retry"
+                    PrivilegedBridgeStatus.Ready -> stringResource(R.string.shizuku_connected)
+                    PrivilegedBridgeStatus.Binding -> stringResource(R.string.shizuku_connecting)
+                    PrivilegedBridgeStatus.PermissionRequired -> stringResource(R.string.shizuku_permission_required)
+                    PrivilegedBridgeStatus.Unavailable -> stringResource(R.string.shizuku_unavailable)
+                    PrivilegedBridgeStatus.Error -> stringResource(R.string.shizuku_connection_failed)
                 },
                 icon = ImageVector.vectorResource(R.drawable.ic_settings_alert_fill),
                 onPreferenceClick = viewModel::requestPrivilegedAccess,
@@ -235,8 +235,8 @@ fun SettingsScreen(
             val crashLogUtil = remember { CrashLogUtil(context) }
             
             TextPreferenceWidget(
-                title = "Dump Logs",
-                subtitle = "Save diagnostic logs to your device",
+                title = stringResource(R.string.dump_logs),
+                subtitle = stringResource(R.string.dump_logs_subtitle),
                 icon = ImageVector.vectorResource(R.drawable.ic_bug_report_fill),
                 onPreferenceClick = {
                     scope.launch {
@@ -249,8 +249,8 @@ fun SettingsScreen(
         item {
             val activity = context as? Activity
             TextPreferenceWidget(
-                title = "Stop Service & Exit",
-                subtitle = "Disconnect all devices, stop the service, and close the application",
+                title = stringResource(R.string.stop_service_exit),
+                subtitle = stringResource(R.string.stop_service_exit_subtitle),
                 icon = ImageVector.vectorResource(R.drawable.ic_close),
                 onPreferenceClick = {
                     viewModel.stopService()

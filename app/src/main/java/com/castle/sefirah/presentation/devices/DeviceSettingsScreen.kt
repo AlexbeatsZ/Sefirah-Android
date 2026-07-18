@@ -88,7 +88,10 @@ fun DeviceSettingsScreen(
                 title = { Text(stringResource(R.string.device_settings)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(painterResource(R.drawable.ic_arrow_back), "Back")
+                        Icon(
+                            painterResource(R.drawable.ic_arrow_back),
+                            stringResource(R.string.back_button),
+                        )
                     }
                 },
                 actions = {
@@ -98,7 +101,7 @@ fun DeviceSettingsScreen(
                     }) {
                         Icon(
                             painter = painterResource(R.drawable.ic_delete_fill),
-                            contentDescription = "Delete Device"
+                            contentDescription = stringResource(R.string.delete_device)
                         )
                     }
                 }
@@ -367,7 +370,7 @@ private fun DeviceAvatar(avatar: String?) {
     
     Image(
         painter = painter,
-        contentDescription = "Profile Picture",
+        contentDescription = stringResource(R.string.profile_picture),
         modifier = Modifier
             .size(100.dp)
             .clip(CircleShape)

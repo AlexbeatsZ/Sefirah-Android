@@ -102,6 +102,7 @@ fun HomeScreen(
                             configuration = headsetConfiguration,
                             state = headsetHandoffState,
                             selectedEndpointId = selectedEndpointId,
+                            localEndpointId = viewModel.localEndpointId,
                             onRefresh = viewModel::refreshBluetoothDevices,
                             onDisconnect = viewModel::disconnectHeadset,
                             onSwitch = viewModel::switchHeadset,

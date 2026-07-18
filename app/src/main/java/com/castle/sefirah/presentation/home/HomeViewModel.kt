@@ -41,6 +41,7 @@ class HomeViewModel @Inject constructor(
     val headsetConfiguration = bluetoothHandoffStore.configuration
     val headsetHandoffState = bluetoothHandoffStore.state
     val selectedEndpointId = deviceManager.selectedDeviceId
+    val localEndpointId = deviceManager.localDevice.deviceId
 
     val batteryByDevice: StateFlow<Map<String, BatteryState>> =
         remoteDeviceStatusFeature.batteryByDevice

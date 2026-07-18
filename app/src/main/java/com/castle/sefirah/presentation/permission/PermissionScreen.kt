@@ -41,7 +41,10 @@ fun PermissionScreen(rootNavController: NavHostController) {
                     IconButton(
                         onClick = { rootNavController.navigateUp() }
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            stringResource(R.string.back_button),
+                        )
                     }
                 },
             )

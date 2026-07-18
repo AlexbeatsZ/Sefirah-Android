@@ -29,6 +29,9 @@
 - The Android Bluetooth card now follows the selected PC and separates connected-to-selected, connected-to-other, and saved-disconnected devices. Rows expand to Disconnect/Switch actions, and a settings dialog persists per-headset visibility.
 - The updated debug APK installed with `adb install -r` without clearing app data; the app retained the existing Meta PC binding and the Shizuku UserService returned after restart.
 - QCY AilyBuds Lite was physically switched PC to Redmi K70 and back. Android screenshots verified the three groups, expanded action row, and visibility dialog; the final headset connection was restored to the PC.
+- Android Chinese localization must include the generic `values-zh`, `values-zh-rCN`, and `values-zh-rTW` resource sets because the Redmi K70 locale resolved to Traditional Chinese resources during physical testing. Keep all three sets complete and update hard-coded accessibility descriptions alongside visible labels.
+- Bluetooth action rows use four equal layout slots at 40 dp minimum height and 12 sp text. Rows with fewer actions retain empty slots so every visible action button has the same width; the saved-device action therefore matches the width of actions in the four-button row.
+- File transfer and Bluetooth handoff now share the Compose `DeviceSelectionDialog`; this avoids falling back to Xiaomi's native `AlertDialog` styling. `adb install -r` preserved the Meta PC binding, and the final QCY AilyBuds Lite regression ended with PC connected and Redmi K70 disconnected.
 
 # Task Board
 
@@ -46,4 +49,7 @@
 - [x] Fix phone Bluetooth catalog discovery in Shizuku UserService and validate both QCY headsets through `sefirahctl`.
 - [x] Redesign the Android Bluetooth card around the selected PC with three sections, expandable actions, and visibility settings.
 - [x] Install the updated APK in place and physically validate QCY AilyBuds Lite handoff, disconnect, visibility, and live UI state.
+- [x] Fully localize the Android UI and accessibility labels into Chinese, including settings, device controls, dialogs, navigation, and default PC actions.
+- [x] Standardize Bluetooth action button width/height and enlarge action text while retaining one-row actions.
+- [x] Reuse the app-styled file-transfer device selector for Bluetooth “switch to other device”.
 - [x] Commit and push the feature branch.

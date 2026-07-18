@@ -38,7 +38,7 @@ fun QrConnectionDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                text = "Connect to ${connectionData.deviceName}",
+                text = stringResource(R.string.connect_to_device, connectionData.deviceName),
                 style = MaterialTheme.typography.titleLarge,
             )
         },

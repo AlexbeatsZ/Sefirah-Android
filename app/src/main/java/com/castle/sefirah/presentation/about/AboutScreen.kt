@@ -44,7 +44,10 @@ fun AboutScreen(rootNavController: NavController, modifier: Modifier = Modifier)
                     IconButton(
                         onClick = { rootNavController.navigateUp() }
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            stringResource(R.string.back_button),
+                        )
                     }
                 },
             )
@@ -100,7 +103,7 @@ fun AboutScreen(rootNavController: NavController, modifier: Modifier = Modifier)
                     )
 
                     LinkIcon(
-                        label = "Donation",
+                        label = stringResource(R.string.donation),
                         icon = Icons.Default.AttachMoney,
                         url = "https://linktr.ee/shrimqy",
                     )

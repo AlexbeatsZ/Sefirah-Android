@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -48,6 +49,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
+import sefirah.common.R
 import sefirah.network.util.QrCodeParser
 import zxingcpp.BarcodeReader
 import java.util.concurrent.Executors
@@ -87,7 +89,7 @@ fun QrCodeScanner(
         when {
             permissionDenied -> {
                 Text(
-                    text = "Camera permission is required to scan QR codes. Please grant permission in settings.",
+                    text = stringResource(R.string.camera_permission_qr_required),
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
@@ -120,7 +122,7 @@ fun QrCodeScanner(
         ) {
             Icon(
                 imageVector = Icons.Default.Close,
-                contentDescription = "Close",
+                contentDescription = stringResource(R.string.close),
                 tint = MaterialTheme.colorScheme.onSurface
             )
         }

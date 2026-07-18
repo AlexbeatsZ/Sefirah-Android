@@ -1,2 +1,27 @@
 <resources>
+    <string name="cancel">Cancel</string>
+    <string name="done">Done</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="send_to_device">Send to device</string>
+    <string name="bluetooth_devices">Bluetooth devices</string>
+    <string name="bluetooth_refresh">Refresh Bluetooth devices</string>
+    <string name="bluetooth_no_selected_device">No device selected</string>
+    <string name="bluetooth_connected_selected">Connected to selected device</string>
+    <string name="bluetooth_connected_other">Connected to other devices</string>
+    <string name="bluetooth_saved_disconnected">Saved but not connected</string>
+    <string name="bluetooth_no_devices">No devices</string>
+    <string name="bluetooth_hide_section">Hide section</string>
+    <string name="bluetooth_show_section">Show section</string>
+    <string name="bluetooth_switch_device">Switch device</string>
+    <string name="bluetooth_switch_to_this_device">Switch to this device</string>
+    <string name="bluetooth_switch_to_selected_device">Switch to selected device</string>
+    <string name="bluetooth_switch_to_other_device">Switch to another device</string>
+    <string name="bluetooth_connect_to_selected_device">Connect to selected device</string>
+    <string name="bluetooth_select_target">Switch %1$s to</string>
+    <string name="bluetooth_visible_devices">Visible Bluetooth devices</string>
+    <string name="bluetooth_visibility_description">Choose which saved devices appear on the Bluetooth card.</string>
+    <string name="bluetooth_status_disconnecting">Disconnecting Bluetooth device…</string>
+    <string name="bluetooth_status_connecting">Connecting Bluetooth device…</string>
+    <string name="bluetooth_status_completed">Bluetooth operation completed.</string>
+    <string name="bluetooth_status_failed">Bluetooth operation failed.</string>
 </resources>

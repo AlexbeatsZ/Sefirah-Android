@@ -51,7 +51,7 @@ fun DeviceItem(
                 .padding(start = PrefsHorizontalPadding, end = 16.dp)
                 .size(38.dp),
             imageVector = Icons.Rounded.DesktopWindows,
-            contentDescription = "Device Icon",
+            contentDescription = stringResource(R.string.device_icon),
             tint = MaterialTheme.colorScheme.surfaceTint,
         )
         Column(

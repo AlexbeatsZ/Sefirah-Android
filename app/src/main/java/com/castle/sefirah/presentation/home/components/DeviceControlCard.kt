@@ -39,6 +39,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.res.stringResource
 import sefirah.presentation.components.Button
 import sefirah.presentation.components.TextButton
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -58,7 +59,7 @@ fun DeviceControlCard(
 
     if (showDialog && selectedAction != null) {
         ActionConfirmationDialog(
-            actionName = selectedAction!!.actionName,
+            actionName = localizedActionName(selectedAction!!),
             onConfirm = {
                 onActionClick(selectedAction!!)
                 showDialog = false
@@ -97,7 +98,7 @@ fun DeviceControlCard(
                                     val action = rowActions[i]
                                     DeviceControlButton(
                                         icon = getIconForAction(action.actionId),
-                                        name = action.actionName,
+                                        name = localizedActionName(action),
                                         onClick = {
                                             selectedAction = action
                                             showDialog = true
@@ -123,12 +124,25 @@ fun DeviceControlCard(
                 ) {
                     Icon(
                         imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = if (expanded) "Show less" else "Show more"
+                        contentDescription = stringResource(
+                            if (expanded) R.string.show_less else R.string.show_more,
+                        )
                     )
                 }
             }
         }
     }
+}
+
+@Composable
+private fun localizedActionName(action: ActionInfo): String = when (action.actionId.lowercase()) {
+    "lock" -> stringResource(R.string.action_lock)
+    "hibernate" -> stringResource(R.string.action_hibernate)
+    "logoff" -> stringResource(R.string.action_logoff)
+    "restart" -> stringResource(R.string.action_restart)
+    "shutdown" -> stringResource(R.string.action_shutdown)
+    "sleep" -> stringResource(R.string.action_sleep)
+    else -> action.actionName
 }
 
 @Composable
@@ -190,7 +204,7 @@ fun TimerDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Set timer for $title") },
+        title = { Text(stringResource(R.string.set_timer_for, title)) },
         text = {
             Column {
                 Row(
@@ -201,7 +215,7 @@ fun TimerDialog(
                     OutlinedTextField(
                         value = hours,
                         onValueChange = { onHoursChange(it.filter { char -> char.isDigit() }) },
-                        label = { Text("Hours") },
+                        label = { Text(stringResource(R.string.hours)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -211,7 +225,7 @@ fun TimerDialog(
                     OutlinedTextField(
                         value = minutes,
                         onValueChange = { onMinutesChange(it.filter { char -> char.isDigit() }) },
-                        label = { Text("Minutes") },
+                        label = { Text(stringResource(R.string.minutes)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -221,7 +235,7 @@ fun TimerDialog(
                     OutlinedTextField(
                         value = seconds,
                         onValueChange = { onSecondsChange(it.filter { char -> char.isDigit() }) },
-                        label = { Text("Seconds") },
+                        label = { Text(stringResource(R.string.seconds)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -230,12 +244,12 @@ fun TimerDialog(
         },
         confirmButton = {
             Button(onClick = onConfirm) {
-                Text("Confirm")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )
@@ -249,16 +263,16 @@ fun ActionConfirmationDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Confirm Action") },
-        text = { Text("Are you sure you want to perform the action: $actionName?") },
+        title = { Text(stringResource(R.string.confirm_action_title)) },
+        text = { Text(stringResource(R.string.confirm_action_message, actionName)) },
         confirmButton = {
             Button(onClick = onConfirm) {
-                Text("Confirm")
+                Text(stringResource(R.string.confirm))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel")
+                Text(stringResource(R.string.cancel))
             }
         }
     )

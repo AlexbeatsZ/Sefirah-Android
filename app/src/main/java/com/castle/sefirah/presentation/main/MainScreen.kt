@@ -148,7 +148,7 @@ private fun MainNavigationSuite(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Add,
-                            contentDescription = "Add Device",
+                            contentDescription = stringResource(CommonR.string.add_device),
                         )
                     }
                 }
