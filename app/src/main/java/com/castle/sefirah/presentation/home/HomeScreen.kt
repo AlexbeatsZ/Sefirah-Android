@@ -13,6 +13,7 @@ import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,6 +44,11 @@ fun HomeScreen(
     val batteryByDevice by viewModel.batteryByDevice.collectAsState()
     val headsetConfiguration by viewModel.headsetConfiguration.collectAsState()
     val headsetHandoffState by viewModel.headsetHandoffState.collectAsState()
+    val selectedEndpointId by viewModel.selectedEndpointId.collectAsState()
+
+    LaunchedEffect(selectedEndpointId) {
+        if (selectedEndpointId != null) viewModel.refreshBluetoothDevices()
+    }
 
     // Bottom sheet state
     val scope = rememberCoroutineScope()
@@ -95,7 +101,11 @@ fun HomeScreen(
                         HeadsetHandoffCard(
                             configuration = headsetConfiguration,
                             state = headsetHandoffState,
+                            selectedEndpointId = selectedEndpointId,
+                            onRefresh = viewModel::refreshBluetoothDevices,
+                            onDisconnect = viewModel::disconnectHeadset,
                             onSwitch = viewModel::switchHeadset,
+                            onVisibilityChanged = viewModel::setHeadsetVisibility,
                         )
                     }
                 }

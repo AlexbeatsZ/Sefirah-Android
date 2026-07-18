@@ -26,6 +26,9 @@
 - Shizuku cannot be replaced by silently embedding shell/root privilege in an ordinary APK. On a non-root device its server must be started again after reboot through ADB/wireless debugging; trusted-WLAN auto-start can reduce this burden but is still an explicit Shizuku/device configuration.
 - Shizuku UserService is not a normal application process, so Android does not initialize the Bluetooth mainline module's `BluetoothServiceManager`. On Redmi K70 this made `BluetoothManager.adapter`, hidden `BluetoothAdapter.createAdapter`, and `getDefaultAdapter()` return null even though the radio was on. Initialize `BluetoothFrameworkInitializer` with `android.os.BluetoothServiceManager`, then bind `bluetooth_manager` directly and cache the resulting adapter.
 - The Windows `sefirahctl` path is the physical-device regression harness: `bluetooth list phone` now returns QCY-T13 and QCY AilyBuds Lite with real addresses and connection state, while `bluetooth discover` matches them to the PC catalog. Reinstalling with `adb install -r` retained the existing binding throughout validation.
+- The Android Bluetooth card now follows the selected PC and separates connected-to-selected, connected-to-other, and saved-disconnected devices. Rows expand to Disconnect/Switch actions, and a settings dialog persists per-headset visibility.
+- The updated debug APK installed with `adb install -r` without clearing app data; the app retained the existing Meta PC binding and the Shizuku UserService returned after restart.
+- QCY AilyBuds Lite was physically switched PC to Redmi K70 and back. Android screenshots verified the three groups, expanded action row, and visibility dialog; the final headset connection was restored to the PC.
 
 # Task Board
 
@@ -41,4 +44,6 @@
 - [ ] Validate on both Android 15 Xiaomi devices and both QCY headsets after the signing/re-enrollment path is ready.
 - [x] Install Shizuku on the Redmi K70 and verify the Sefirah privileged UserService end to end.
 - [x] Fix phone Bluetooth catalog discovery in Shizuku UserService and validate both QCY headsets through `sefirahctl`.
+- [x] Redesign the Android Bluetooth card around the selected PC with three sections, expandable actions, and visibility settings.
+- [x] Install the updated APK in place and physically validate QCY AilyBuds Lite handoff, disconnect, visibility, and live UI state.
 - [x] Commit and push the feature branch.

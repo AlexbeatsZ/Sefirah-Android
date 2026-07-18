@@ -73,6 +73,25 @@ data class BluetoothHandoffRequest(
 ) : SocketMessage()
 
 @Serializable
+@SerialName("BluetoothDisconnectRequest")
+data class BluetoothDisconnectRequest(
+    val operationId: String,
+    val headsetId: String,
+    val endpointId: String,
+) : SocketMessage()
+
+@Serializable
+@SerialName("BluetoothHandoffRefreshRequest")
+data object BluetoothHandoffRefreshRequest : SocketMessage()
+
+@Serializable
+@SerialName("BluetoothHeadsetVisibilityRequest")
+data class BluetoothHeadsetVisibilityRequest(
+    val headsetId: String,
+    val isVisible: Boolean,
+) : SocketMessage()
+
+@Serializable
 @SerialName("BluetoothHandoffCommand")
 data class BluetoothHandoffCommand(
     val operationId: String,
@@ -116,6 +135,8 @@ data class BluetoothHandoffConfiguration(
 data class BluetoothHeadsetDescriptor(
     val id: String,
     val displayName: String,
+    val isVisible: Boolean = true,
+    val endpointIds: List<String> = emptyList(),
     val activeEndpointId: String? = null,
 )
 

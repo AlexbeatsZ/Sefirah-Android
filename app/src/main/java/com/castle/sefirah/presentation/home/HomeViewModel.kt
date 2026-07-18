@@ -22,6 +22,9 @@ import sefirah.media.RemotePlaybackFeature
 import sefirah.status.RemoteDeviceStatusFeature
 import sefirah.communication.bluetooth.BluetoothHandoffStore
 import sefirah.domain.model.BluetoothHandoffRequest
+import sefirah.domain.model.BluetoothDisconnectRequest
+import sefirah.domain.model.BluetoothHandoffRefreshRequest
+import sefirah.domain.model.BluetoothHeadsetVisibilityRequest
 import java.util.UUID
 import javax.inject.Inject
 
@@ -37,6 +40,7 @@ class HomeViewModel @Inject constructor(
 
     val headsetConfiguration = bluetoothHandoffStore.configuration
     val headsetHandoffState = bluetoothHandoffStore.state
+    val selectedEndpointId = deviceManager.selectedDeviceId
 
     val batteryByDevice: StateFlow<Map<String, BatteryState>> =
         remoteDeviceStatusFeature.batteryByDevice
@@ -94,17 +98,38 @@ class HomeViewModel @Inject constructor(
     }
 
     fun switchHeadset(headsetId: String, targetEndpointId: String) {
-        val coordinator = deviceManager.pairedDevices.value.firstOrNull {
-            it.connectionState.isConnected &&
-                it.supportsCapability(sefirah.domain.model.ProtocolCapabilities.BLUETOOTH_HANDOFF_V1)
-        } ?: return
-        networkManager.sendMessage(
-            coordinator.deviceId,
+        sendToBluetoothCoordinator(
             BluetoothHandoffRequest(
                 operationId = UUID.randomUUID().toString(),
                 headsetId = headsetId,
                 targetEndpointId = targetEndpointId,
             ),
         )
+    }
+
+    fun disconnectHeadset(headsetId: String, endpointId: String) {
+        sendToBluetoothCoordinator(
+            BluetoothDisconnectRequest(
+                operationId = UUID.randomUUID().toString(),
+                headsetId = headsetId,
+                endpointId = endpointId,
+            ),
+        )
+    }
+
+    fun refreshBluetoothDevices() {
+        sendToBluetoothCoordinator(BluetoothHandoffRefreshRequest)
+    }
+
+    fun setHeadsetVisibility(headsetId: String, isVisible: Boolean) {
+        sendToBluetoothCoordinator(BluetoothHeadsetVisibilityRequest(headsetId, isVisible))
+    }
+
+    private fun sendToBluetoothCoordinator(message: SocketMessage) {
+        val coordinator = deviceManager.pairedDevices.value.firstOrNull {
+            it.connectionState.isConnected &&
+                it.supportsCapability(sefirah.domain.model.ProtocolCapabilities.BLUETOOTH_HANDOFF_V1)
+        } ?: return
+        networkManager.sendMessage(coordinator.deviceId, message)
     }
 }

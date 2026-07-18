@@ -17,6 +17,9 @@ import sefirah.domain.model.BluetoothPairingResult
 import sefirah.domain.model.BluetoothDeviceCatalog
 import sefirah.domain.model.BluetoothDeviceCatalogRequest
 import sefirah.domain.model.BluetoothHandoffCommand
+import sefirah.domain.model.BluetoothDisconnectRequest
+import sefirah.domain.model.BluetoothHandoffRefreshRequest
+import sefirah.domain.model.BluetoothHeadsetVisibilityRequest
 import sefirah.domain.model.BluetoothHandoffRequest
 import sefirah.domain.model.BluetoothHandoffResult
 import sefirah.domain.model.BluetoothHandoffState
@@ -63,6 +66,9 @@ object MessageSerializer {
                 subclass(BluetoothDeviceCatalog::class)
                 subclass(BluetoothDeviceCatalogRequest::class)
                 subclass(BluetoothHandoffCommand::class)
+                subclass(BluetoothDisconnectRequest::class)
+                subclass(BluetoothHandoffRefreshRequest::class)
+                subclass(BluetoothHeadsetVisibilityRequest::class)
                 subclass(BluetoothHandoffRequest::class)
                 subclass(BluetoothHandoffResult::class)
                 subclass(BluetoothHandoffState::class)
