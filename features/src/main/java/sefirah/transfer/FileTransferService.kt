@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import sefirah.clipboard.ClipboardHandler
+import sefirah.common.notifications.NotificationCenter
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.interfaces.NetworkManager
 import sefirah.domain.interfaces.PreferencesRepository
@@ -31,7 +32,7 @@ class FileTransferService @Inject constructor(
     private val socketFactory: SocketFactory,
     private val deviceManager: DeviceManager,
     private val preferencesRepository: PreferencesRepository,
-    private val notifications: TransferNotificationHelper,
+    private val notificationCenter: NotificationCenter,
     private val networkManager: NetworkManager,
     private val clipboardHandler: ClipboardHandler
 ) {
@@ -65,7 +66,7 @@ class FileTransferService @Inject constructor(
                     fileUris = fileUris,
                     filesMetadata = filesMetadata,
                     deviceName = device.deviceName,
-                    notifications = notifications
+                    notificationCenter = notificationCenter
                 )
 
                 val announced = networkManager.sendMessageAwait(
@@ -114,7 +115,7 @@ class FileTransferService @Inject constructor(
                     files = transfer.files,
                     deviceName = device.deviceName,
                     preferencesRepository = if (transfer.isClipboard) null else preferencesRepository,
-                    notifications = if (transfer.isClipboard) null else notifications
+                    notificationCenter = if (transfer.isClipboard) null else notificationCenter
                 )
 
                 val fileUri = handler.receive()
@@ -136,7 +137,6 @@ class FileTransferService @Inject constructor(
 
     fun cancelTransfer(transferId: String) {
         activeTransfers[transferId]?.job?.cancel()
-        notifications.cancel(transferId)
     }
 
     fun cancelTransfersForDevice(deviceId: String) {
