@@ -2,7 +2,7 @@ package sefirah.communication.bluetooth
 
 import org.json.JSONObject
 import sefirah.domain.interfaces.NetworkManager
-import sefirah.domain.model.BluetoothAudioDevice
+import sefirah.domain.model.BluetoothCatalogDevice
 import sefirah.domain.model.BluetoothDeviceCatalog
 import sefirah.domain.model.BluetoothDeviceCatalogRequest
 import sefirah.domain.model.BluetoothHandoffCommand
@@ -17,6 +17,7 @@ class BluetoothHandoffHandler @Inject constructor(
     private val privilegedBridgeManager: PrivilegedBridgeManager,
 ) {
     suspend fun handleCatalogRequest(sourceDeviceId: String, request: BluetoothDeviceCatalogRequest) {
+        privilegedBridgeManager.ensureReady()
         val rawCatalog = privilegedBridgeManager.getBluetoothCatalog()
         val parsedCatalog = rawCatalog?.let { raw ->
             runCatching { parseCatalog(request.requestId, JSONObject(raw)) }.getOrNull()
@@ -33,6 +34,7 @@ class BluetoothHandoffHandler @Inject constructor(
     }
 
     suspend fun handleCommand(sourceDeviceId: String, command: BluetoothHandoffCommand) {
+        privilegedBridgeManager.ensureReady()
         val response = privilegedBridgeManager.executeBluetoothCommand(
             action = command.action,
             deviceKey = command.deviceKey,
@@ -56,10 +58,12 @@ class BluetoothHandoffHandler @Inject constructor(
                 for (index in 0 until devicesJson.length()) {
                     val item = devicesJson.getJSONObject(index)
                     add(
-                        BluetoothAudioDevice(
+                        BluetoothCatalogDevice(
                             deviceKey = item.getString("deviceKey"),
                             displayName = item.getString("displayName"),
                             isConnected = item.optBoolean("isConnected"),
+                            bluetoothAddress = item.optNullableString("bluetoothAddress"),
+                            isHeadset = item.optBoolean("isHeadset"),
                         ),
                     )
                 }

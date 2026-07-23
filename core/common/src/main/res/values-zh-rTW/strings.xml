@@ -56,6 +56,11 @@
     <string name="media_access_rationale">用于访问媒体文件</string>
     <string name="background_battery_usage">后台运行权限</string>
     <string name="background_battery_usage_rationale">通过关闭“电池优化”实现保持稳定连接</string>
+    <string name="background_connection_protection">後台連線保護</string>
+    <string name="background_connection_not_protected">系統電池最佳化仍然開啟。點此允許應用程式持續在後台連線。</string>
+    <string name="background_connection_protected">系統電池最佳化已關閉。</string>
+    <string name="background_connection_xiaomi_not_protected">系統電池最佳化仍然開啟。點此允許；在 HyperOS 中還需將省電策略設為「無限制」，並開啟「後台自啟動」。</string>
+    <string name="background_connection_xiaomi_protected">標準電池最佳化已關閉。在 HyperOS 中還需將省電策略設為「無限制」，並開啟「後台自啟動」。</string>
     <string name="storage_access">存储权限</string>
     <string name="storage_access_rationale">用于桌面端对于本机文件的远程访问</string>
     <string name="accessibility_service">无障碍权限</string>

@@ -111,14 +111,15 @@ private object BluetoothShellController {
         return runCatching {
             val devices = JSONArray()
             adapter.bondedDevices
-                .filter(::isAudioDevice)
                 .sortedBy { it.name.orEmpty() }
                 .forEach { device ->
                     devices.put(
                         JSONObject()
                             .put("deviceKey", device.address)
                             .put("displayName", device.name ?: device.address)
-                            .put("isConnected", isConnected(device)),
+                            .put("isConnected", isConnected(device))
+                            .put("bluetoothAddress", device.address)
+                            .put("isHeadset", isHeadset(device)),
                     )
                 }
 
@@ -185,14 +186,26 @@ private object BluetoothShellController {
 
     private fun setRadio(enabled: Boolean): Boolean {
         val operation = if (enabled) "enable" else "disable"
-        val process = ProcessBuilder("/system/bin/cmd", "bluetooth_manager", operation)
-            .redirectErrorStream(true)
-            .start()
-        if (!process.waitFor(8, TimeUnit.SECONDS)) {
-            process.destroy()
-            return false
+        repeat(RADIO_COMMAND_ATTEMPTS) {
+            val process = ProcessBuilder("/system/bin/cmd", "bluetooth_manager", operation)
+                .redirectErrorStream(true)
+                .start()
+            if (!process.waitFor(8, TimeUnit.SECONDS)) {
+                process.destroy()
+            } else if (process.exitValue() == 0 && waitForRadioState(enabled)) {
+                return true
+            }
         }
-        return process.exitValue() == 0
+        return getAdapter()?.isEnabled == enabled
+    }
+
+    private fun waitForRadioState(enabled: Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + RADIO_STATE_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            if (getAdapter()?.isEnabled == enabled) return true
+            Thread.sleep(RADIO_STATE_POLL_INTERVAL_MS)
+        }
+        return false
     }
 
     private fun getAdapter(): BluetoothAdapter? {
@@ -273,10 +286,12 @@ private object BluetoothShellController {
         method.invoke(device) as Boolean
     }.getOrDefault(false)
 
-    private fun isAudioDevice(device: BluetoothDevice): Boolean {
-        val majorClass = device.bluetoothClass?.majorDeviceClass
-        return majorClass == BluetoothClass.Device.Major.AUDIO_VIDEO
-    }
+    private fun isHeadset(device: BluetoothDevice): Boolean =
+        device.bluetoothClass?.deviceClass in setOf(
+            BluetoothClass.Device.AUDIO_VIDEO_HANDSFREE,
+            BluetoothClass.Device.AUDIO_VIDEO_HEADPHONES,
+            BluetoothClass.Device.AUDIO_VIDEO_WEARABLE_HEADSET,
+        )
 
     private fun catalogError(code: String, message: String): String = JSONObject()
         .put("controllerAvailable", false)
@@ -304,4 +319,8 @@ private object BluetoothShellController {
             errorMessage?.let { put("errorMessage", it) }
         }
         .toString()
+
+    private const val RADIO_COMMAND_ATTEMPTS = 3
+    private const val RADIO_STATE_TIMEOUT_MS = 2_000L
+    private const val RADIO_STATE_POLL_INTERVAL_MS = 250L
 }

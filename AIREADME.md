@@ -53,3 +53,28 @@
 - [x] Standardize Bluetooth action button width/height and enlarge action text while retaining one-row actions.
 - [x] Reuse the app-styled file-transfer device selector for Bluetooth “switch to other device”.
 - [x] Commit and push the feature branch.
+# 2026-07-24 Bluetooth Catalog and HyperOS Experiment
+
+## Project Goal
+
+- Android 默认上报全部 bonded 蓝牙设备并携带 `isHeadset`，由 UI 提供“全部 / 仅耳机”筛选。
+- 改善电脑、服务器、Xiaomi Pad 6 Pro 与 Redmi K70 的长期连接。
+
+## Lessons Learned
+
+- Android 需要在前台服务中同时持有 partial WakeLock 与高性能 Wi-Fi Lock，但这些锁不能覆盖 HyperOS 的厂商级策略。
+- 连接碰撞必须按端点 ID 固定选择方向；重连使用 5/10/20/40/60 秒退避，避免失败风暴。
+- Xiaomi Pad 6 Pro 的 Sefirah 和无线 ADB TLS 都会在约 20–30 秒失去入站连接；这把问题定位到应用协议之外。
+- 标准 `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`、`deviceidle whitelist` 和 active standby bucket 已在平板验证，但仍未消除断流。
+- 设置首页新增“后台连接保护”，在 Xiaomi/Redmi/POCO 上明确提示 HyperOS 还需“无限制”和后台自启动；这改善可发现性，但本轮未证明厂商设置是最终修复。
+- Redmi K70 上修复服务器固定证书后，电脑和服务器可同时稳定认证。
+
+## Task Board
+
+- [done] 全部 bonded 蓝牙目录、耳机分类、筛选 UI 与协议序列化测试。
+- [done] Shizuku 蓝牙桥、心跳、碰撞策略、退避、WakeLock/Wi-Fi Lock。
+- [done] Android v43 构建和全量测试（240 tasks）。
+- [done] v43 部署至 Redmi K70 与 Xiaomi Pad 6 Pro；平板回读 versionCode 43、白名单和 active 桶。
+- [done] 手机服务器证书固定值经备份和 SHA-256 验证后修复。
+- [paused] 平板系统层断流仍未解决；用户要求结束本轮。
+- [pending] 后续先恢复 USB MTP/ADB 枚举并抓断流 logcat，再检查 HyperOS 应用省电“无限制”、后台自启动和网络策略。

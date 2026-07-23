@@ -7,14 +7,12 @@ import io.ktor.network.sockets.InetSocketAddress
 import io.ktor.network.sockets.aSocket
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import sefirah.domain.interfaces.SocketFactory
 import sefirah.network.util.SslHelper
 import javax.inject.Inject
 import javax.inject.Singleton
 import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
-import kotlin.time.Duration.Companion.milliseconds
 
 @Singleton
 class SocketFactoryImpl @Inject constructor() : SocketFactory {
@@ -24,17 +22,20 @@ class SocketFactoryImpl @Inject constructor() : SocketFactory {
         return try {
             Log.d(TAG, "Connecting to $address:$port")
             val sslContext = SslHelper.sslContext(certificate)
-            withTimeoutOrNull(3000L.milliseconds) {
-                withContext(Dispatchers.IO) {
-                    (sslContext.socketFactory.createSocket(address, port) as SSLSocket).apply {
+            withContext(Dispatchers.IO) {
+                (sslContext.socketFactory.createSocket() as SSLSocket).apply {
+                    try {
+                        connect(java.net.InetSocketAddress(address, port), CONNECTION_TIMEOUT_MS)
+                        soTimeout = HANDSHAKE_TIMEOUT_MS
                         startHandshake()
+                        soTimeout = 0
+                    } catch (error: Exception) {
+                        runCatching { close() }
+                        throw error
                     }
                 }
-            }?.also {
+            }.also {
                 Log.d(TAG, "Connected to ${it.remoteSocketAddress}")
-            } ?: run {
-                Log.e(TAG, "Connection timed out to $address:$port")
-                null
             }
         } catch (e: Exception) {
             Log.e(TAG, "Connection failed to $address:$port", e)
@@ -76,6 +77,8 @@ class SocketFactoryImpl @Inject constructor() : SocketFactory {
     }
 
     companion object {
+        private const val CONNECTION_TIMEOUT_MS = 3_000
+        private const val HANDSHAKE_TIMEOUT_MS = 3_000
         private const val TAG = "SocketFactory"
     }
 }

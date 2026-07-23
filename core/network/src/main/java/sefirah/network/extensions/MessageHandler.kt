@@ -13,6 +13,7 @@ import sefirah.domain.model.BluetoothHandoffConfiguration
 import sefirah.domain.model.BluetoothHandoffState
 import sefirah.domain.model.ClearNotifications
 import sefirah.domain.model.ClipboardInfo
+import sefirah.domain.model.ConnectionHeartbeat
 import sefirah.domain.model.DeviceInfo
 import sefirah.domain.model.Disconnect
 import sefirah.domain.model.DiscoveredDevice
@@ -47,6 +48,7 @@ suspend fun NetworkService.handleMessage(device: BaseRemoteDevice, message: Sock
         if (device is PairedDevice) {
             when (message) {
                 is DeviceInfo -> handleDeviceInfo(message, device)
+                is ConnectionHeartbeat -> Log.d(TAG, "Heartbeat received from ${device.deviceId}")
                 is ClearNotifications -> notificationFeature.removeAllNotification()
                 is RequestApplicationList -> appListHandler.handleRequest(device.deviceId)
                 is Disconnect -> disconnectDevice(device, true)

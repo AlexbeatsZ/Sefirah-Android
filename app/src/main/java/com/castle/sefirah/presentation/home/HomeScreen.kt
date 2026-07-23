@@ -27,6 +27,9 @@ import com.castle.sefirah.presentation.home.components.SelectedAudioDevice
 import com.castle.sefirah.presentation.home.components.SwipeableDevicesCard
 import com.castle.sefirah.presentation.home.components.HeadsetHandoffCard
 import com.castle.sefirah.presentation.main.ConnectionViewModel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 @Composable
@@ -47,7 +50,11 @@ fun HomeScreen(
     val selectedEndpointId by viewModel.selectedEndpointId.collectAsState()
 
     LaunchedEffect(selectedEndpointId) {
-        if (selectedEndpointId != null) viewModel.refreshBluetoothDevices()
+        if (selectedEndpointId == null) return@LaunchedEffect
+        while (currentCoroutineContext().isActive) {
+            viewModel.refreshBluetoothDevices()
+            delay(8_000)
+        }
     }
 
     // Bottom sheet state

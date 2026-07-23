@@ -15,6 +15,8 @@ import androidx.compose.ui.unit.dp
 data class DeviceSelectionOption(
     val id: String,
     val displayName: String,
+    val isEnabled: Boolean = true,
+    val supportingText: String? = null,
 )
 
 /**
@@ -34,14 +36,29 @@ fun DeviceSelectionDialog(
         text = {
             Column {
                 options.forEach { option ->
-                    Text(
-                        text = option.displayName,
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onSelected(option) }
+                            .clickable(enabled = option.isEnabled) { onSelected(option) }
                             .padding(horizontal = 4.dp, vertical = 14.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                    ) {
+                        Text(
+                            text = option.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (option.isEnabled) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                        option.supportingText?.let { supportingText ->
+                            Text(
+                                text = supportingText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
             }
         },

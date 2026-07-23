@@ -71,6 +71,11 @@
     <string name="media_access_rationale">Required for accessing the media files</string>
     <string name="background_battery_usage">Background Battery Usage</string>
     <string name="background_battery_usage_rationale">Allow the app to maintain stable connections by disabling battery optimizations</string>
+    <string name="background_connection_protection">Background connection protection</string>
+    <string name="background_connection_not_protected">Battery optimization is still enabled. Tap to allow uninterrupted background connections.</string>
+    <string name="background_connection_protected">Battery optimization is disabled.</string>
+    <string name="background_connection_xiaomi_not_protected">Battery optimization is still enabled. Tap to allow it; in HyperOS, also set Battery saver to No restrictions and enable Background autostart.</string>
+    <string name="background_connection_xiaomi_protected">Standard battery optimization is disabled. In HyperOS, also set Battery saver to No restrictions and enable Background autostart.</string>
     <string name="storage_access">Storage Access</string>
     <string name="storage_access_rationale">Required for Android storage access on remote device</string>
     <string name="accessibility_service">Accessibility Service</string>

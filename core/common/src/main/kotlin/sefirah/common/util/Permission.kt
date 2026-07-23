@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.ActivityNotFoundException
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -47,6 +48,34 @@ fun checkNotificationPermission(
 fun checkBatteryOptimization(context: Context): Boolean {
     return context.getSystemService<PowerManager>()?.isIgnoringBatteryOptimizations(context.packageName)
         ?: false
+}
+
+fun isXiaomiFamilyDevice(): Boolean {
+    val vendor = "${Build.MANUFACTURER} ${Build.BRAND}".lowercase()
+    return listOf("xiaomi", "redmi", "poco").any(vendor::contains)
+}
+
+@SuppressLint("BatteryLife")
+fun openBackgroundConnectionSettings(context: Context) {
+    val appUri = Uri.fromParts("package", context.packageName, null)
+    val primaryIntent = if (checkBatteryOptimization(context)) {
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, appUri)
+    } else {
+        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, appUri)
+    }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    try {
+        context.startActivity(primaryIntent)
+    } catch (_: ActivityNotFoundException) {
+        try {
+            context.startActivity(
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (_: ActivityNotFoundException) {
+            openAppSettings(context)
+        }
+    }
 }
 
 fun checkLocationPermissions(

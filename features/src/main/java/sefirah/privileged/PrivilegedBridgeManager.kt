@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.IBinder
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,6 +33,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
     @Volatile
     private var bridge: IPrivilegedBridge? = null
     private var started = false
+    private var lastBindAttemptAt = 0L
 
     private val userServiceArgs = Shizuku.UserServiceArgs(
         ComponentName(appContext.packageName, PrivilegedBridgeService::class.java.name),
@@ -42,6 +45,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            Log.i(TAG, "Privileged bridge connected")
             bridge = IPrivilegedBridge.Stub.asInterface(binder)
             _status.value = if (binder.pingBinder()) {
                 PrivilegedBridgeStatus.Ready
@@ -51,6 +55,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
+            Log.w(TAG, "Privileged bridge disconnected")
             bridge = null
             _status.value = PrivilegedBridgeStatus.Unavailable
         }
@@ -105,6 +110,21 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         runCatching { bridge?.getBluetoothCatalog() }.getOrNull()
     }
 
+    suspend fun ensureReady(timeoutMillis: Long = BIND_TIMEOUT_MS): Boolean = withContext(Dispatchers.IO) {
+        start()
+        val deadline = System.currentTimeMillis() + timeoutMillis
+        while (System.currentTimeMillis() < deadline) {
+            if (bridge?.asBinder()?.pingBinder() == true) {
+                _status.value = PrivilegedBridgeStatus.Ready
+                return@withContext true
+            }
+            refreshAndBind()
+            delay(BIND_RETRY_INTERVAL_MS)
+        }
+        Log.w(TAG, "Privileged bridge did not become ready within ${timeoutMillis}ms; status=${_status.value}")
+        false
+    }
+
     suspend fun executeBluetoothCommand(action: String, deviceKey: String?, enabled: Boolean): String? =
         withContext(Dispatchers.IO) {
             runCatching { bridge?.executeBluetoothCommand(action, deviceKey, enabled) }.getOrNull()
@@ -124,21 +144,32 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         }
     }
 
+    @Synchronized
     private fun bind() {
         if (bridge?.asBinder()?.pingBinder() == true) {
             _status.value = PrivilegedBridgeStatus.Ready
             return
         }
+        val now = System.currentTimeMillis()
+        if (_status.value == PrivilegedBridgeStatus.Binding && now - lastBindAttemptAt < BIND_RETRY_INTERVAL_MS) {
+            return
+        }
+        lastBindAttemptAt = now
         _status.value = PrivilegedBridgeStatus.Binding
+        Log.i(TAG, "Binding privileged bridge")
         runCatching {
             Shizuku.bindUserService(userServiceArgs, serviceConnection)
         }.onFailure {
+            Log.e(TAG, "Failed to bind privileged bridge", it)
             _status.value = PrivilegedBridgeStatus.Error
         }
     }
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 7821
-        private const val SERVICE_VERSION = 1
+        private const val SERVICE_VERSION = 2
+        private const val BIND_TIMEOUT_MS = 6_000L
+        private const val BIND_RETRY_INTERVAL_MS = 1_000L
+        private const val TAG = "PrivilegedBridgeManager"
     }
 }

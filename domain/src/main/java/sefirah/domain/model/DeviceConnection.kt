@@ -20,6 +20,7 @@ import javax.net.ssl.SSLSocket
 
 class DeviceConnection(
     val deviceId: String,
+    val direction: ConnectionDirection,
     var sslSocket: SSLSocket? = null,
     var readChannel: ByteReadChannel? = null,
     var writeChannel: ByteWriteChannel? = null
@@ -27,6 +28,8 @@ class DeviceConnection(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private var listeningJob: Job? = null
+    @Volatile var lastReceivedAt: Long = System.currentTimeMillis()
+        private set
 
     fun sendMessage(message: SocketMessage) {
         scope.launch {
@@ -66,6 +69,7 @@ class DeviceConnection(
                 while (isActive && !channel.isClosedForRead) {
                     try {
                         channel.readUTF8Line()?.let { line ->
+                            lastReceivedAt = System.currentTimeMillis()
                             MessageSerializer.deserialize(line)?.let { socketMessage ->
                                 val device = getDevice(deviceId) ?: return@let
                                 onMessage(device, socketMessage)

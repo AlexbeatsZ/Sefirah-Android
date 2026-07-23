@@ -5,6 +5,8 @@
     <string name="send_to_device">发送到设备</string>
     <string name="bluetooth_devices">蓝牙设备</string>
     <string name="bluetooth_refresh">刷新蓝牙设备</string>
+    <string name="bluetooth_filter_all">全部設備</string>
+    <string name="bluetooth_filter_headsets">僅耳機</string>
     <string name="bluetooth_no_selected_device">未选择设备</string>
     <string name="bluetooth_connected_selected">已连接到选定设备</string>
     <string name="bluetooth_connected_other">已连接到其他设备</string>
@@ -18,6 +20,7 @@
     <string name="bluetooth_switch_to_other_device">切换到其他设备</string>
     <string name="bluetooth_connect_to_selected_device">连接到选定设备</string>
     <string name="bluetooth_select_target">将 %1$s 切换到</string>
+    <string name="bluetooth_target_unavailable">此裝置尚未回報已儲存該耳機；請確認已配對、啟動 Shizuku 後重新整理。</string>
     <string name="bluetooth_visible_devices">显示的蓝牙设备</string>
     <string name="bluetooth_visibility_description">选择要在蓝牙卡片中显示的已保存设备。</string>
     <string name="bluetooth_status_disconnecting">正在断开蓝牙设备…</string>

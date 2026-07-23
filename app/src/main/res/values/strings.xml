@@ -5,6 +5,8 @@
     <string name="send_to_device">Send to device</string>
     <string name="bluetooth_devices">Bluetooth devices</string>
     <string name="bluetooth_refresh">Refresh Bluetooth devices</string>
+    <string name="bluetooth_filter_all">All devices</string>
+    <string name="bluetooth_filter_headsets">Headsets only</string>
     <string name="bluetooth_no_selected_device">No device selected</string>
     <string name="bluetooth_connected_selected">Connected to selected device</string>
     <string name="bluetooth_connected_other">Connected to other devices</string>
@@ -18,6 +20,7 @@
     <string name="bluetooth_switch_to_other_device">Switch to another device</string>
     <string name="bluetooth_connect_to_selected_device">Connect to selected device</string>
     <string name="bluetooth_select_target">Switch %1$s to</string>
+    <string name="bluetooth_target_unavailable">This device has not reported the saved headset. Pair it, start Shizuku, then refresh.</string>
     <string name="bluetooth_visible_devices">Visible Bluetooth devices</string>
     <string name="bluetooth_visibility_description">Choose which saved devices appear on the Bluetooth card.</string>
     <string name="bluetooth_status_disconnecting">Disconnecting Bluetooth device…</string>

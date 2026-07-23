@@ -10,6 +10,8 @@ import javax.inject.Singleton
 
 @Singleton
 class BluetoothHandoffStore @Inject constructor() {
+    private var latestConfigurationRevision = 0L
+
     private val _configuration = MutableStateFlow(BluetoothHandoffConfiguration())
     val configuration: StateFlow<BluetoothHandoffConfiguration> = _configuration.asStateFlow()
 
@@ -17,6 +19,8 @@ class BluetoothHandoffStore @Inject constructor() {
     val state: StateFlow<BluetoothHandoffState?> = _state.asStateFlow()
 
     fun updateConfiguration(configuration: BluetoothHandoffConfiguration) {
+        if (configuration.revision > 0 && configuration.revision < latestConfigurationRevision) return
+        if (configuration.revision > 0) latestConfigurationRevision = configuration.revision
         _configuration.value = configuration
     }
 

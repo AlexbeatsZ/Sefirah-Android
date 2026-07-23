@@ -52,6 +52,8 @@ import kotlinx.coroutines.launch
 import sefirah.common.R
 import sefirah.common.util.DEFAULT_RECYCLE_BIN_PATH
 import sefirah.common.util.getReadablePathFromUri
+import sefirah.common.util.isXiaomiFamilyDevice
+import sefirah.common.util.openBackgroundConnectionSettings
 import sefirah.common.util.openAppSettings
 import sefirah.privileged.PrivilegedBridgeStatus
 
@@ -138,6 +140,28 @@ fun SettingsScreen(
                     }
                 )   
 
+        }
+
+        item {
+            val batteryExempt = permissionStates.batteryGranted
+            val xiaomiFamily = isXiaomiFamilyDevice()
+            val subtitle = when {
+                xiaomiFamily && batteryExempt ->
+                    stringResource(R.string.background_connection_xiaomi_protected)
+                xiaomiFamily ->
+                    stringResource(R.string.background_connection_xiaomi_not_protected)
+                batteryExempt ->
+                    stringResource(R.string.background_connection_protected)
+                else ->
+                    stringResource(R.string.background_connection_not_protected)
+            }
+
+            TextPreferenceWidget(
+                title = stringResource(R.string.background_connection_protection),
+                subtitle = subtitle,
+                icon = ImageVector.vectorResource(R.drawable.ic_settings_alert_fill),
+                onPreferenceClick = { openBackgroundConnectionSettings(context) },
+            )
         }
 
         item {

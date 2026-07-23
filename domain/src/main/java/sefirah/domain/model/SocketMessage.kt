@@ -17,6 +17,10 @@ sealed class SocketMessage
 object ConnectionAck : SocketMessage()
 
 @Serializable
+@SerialName("ConnectionHeartbeat")
+object ConnectionHeartbeat : SocketMessage()
+
+@Serializable
 @SerialName("Disconnect")
 object Disconnect : SocketMessage()
 
@@ -52,16 +56,18 @@ data class BluetoothDeviceCatalog(
     val controllerAvailable: Boolean,
     val radioEnabled: Boolean,
     val supportsPerDeviceControl: Boolean,
-    val devices: List<BluetoothAudioDevice> = emptyList(),
+    val devices: List<BluetoothCatalogDevice> = emptyList(),
     val errorCode: String? = null,
     val errorMessage: String? = null,
 ) : SocketMessage()
 
 @Serializable
-data class BluetoothAudioDevice(
+data class BluetoothCatalogDevice(
     val deviceKey: String,
     val displayName: String,
     val isConnected: Boolean,
+    val bluetoothAddress: String? = null,
+    val isHeadset: Boolean = false,
 )
 
 @Serializable
@@ -129,6 +135,7 @@ data class BluetoothHandoffState(
 data class BluetoothHandoffConfiguration(
     val headsets: List<BluetoothHeadsetDescriptor> = emptyList(),
     val endpoints: List<BluetoothEndpointDescriptor> = emptyList(),
+    val revision: Long = 0,
 ) : SocketMessage()
 
 @Serializable
@@ -136,6 +143,8 @@ data class BluetoothHeadsetDescriptor(
     val id: String,
     val displayName: String,
     val isVisible: Boolean = true,
+    val isHeadset: Boolean = false,
+    val bluetoothAddress: String? = null,
     val endpointIds: List<String> = emptyList(),
     val activeEndpointId: String? = null,
 )

@@ -1,8 +1,11 @@
 package sefirah.domain.util
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import sefirah.domain.model.BluetoothCatalogDevice
+import sefirah.domain.model.BluetoothDeviceCatalog
 import sefirah.domain.model.BluetoothHandoffCommand
 import sefirah.domain.model.BluetoothDisconnectRequest
 import sefirah.domain.model.BluetoothHandoffRefreshRequest
@@ -57,5 +60,30 @@ class MessageSerializerTest {
 
         assertTrue(descriptor.isVisible)
         assertTrue(descriptor.endpointIds.isEmpty())
+        assertFalse(descriptor.isHeadset)
+    }
+
+    @Test
+    fun `bluetooth catalog preserves address and headset classification`() {
+        val catalog = BluetoothDeviceCatalog(
+            requestId = "catalog-1",
+            controllerAvailable = true,
+            radioEnabled = true,
+            supportsPerDeviceControl = true,
+            devices = listOf(
+                BluetoothCatalogDevice(
+                    deviceKey = "device-1",
+                    displayName = "QCY",
+                    isConnected = true,
+                    bluetoothAddress = "84:AC:60:B4:EC:25",
+                    isHeadset = true,
+                ),
+            ),
+        )
+
+        val encoded = requireNotNull(MessageSerializer.serialize(catalog))
+        val decoded = MessageSerializer.deserialize(encoded) as BluetoothDeviceCatalog
+
+        assertEquals(catalog, decoded)
     }
 }

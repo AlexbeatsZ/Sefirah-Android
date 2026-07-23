@@ -1,7 +1,6 @@
 package com.castle.sefirah.presentation.onboarding
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -58,6 +57,7 @@ import com.castle.sefirah.presentation.common.components.LocationPermissionRatio
 import com.castle.sefirah.presentation.settings.SettingsViewModel
 import sefirah.common.R
 import sefirah.common.util.NEARBY_DEVICES_PERMISSIONS
+import sefirah.common.util.openBackgroundConnectionSettings
 import sefirah.common.util.openAppSettings
 import sefirah.presentation.components.padding
 
@@ -248,13 +248,7 @@ internal class PermissionStep : OnboardingStep {
                         title = stringResource(R.string.background_battery_usage),
                         subtitle = stringResource(R.string.background_battery_usage_rationale),
                         granted = permissionStates.batteryGranted,
-                        onRequest = {
-                            @SuppressLint("BatteryLife")
-                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                data = "package:${context.packageName}".toUri()
-                            }
-                            context.startActivity(intent)
-                        },
+                        onRequest = { openBackgroundConnectionSettings(context) },
                         viewModel = viewModel
                     )
 
