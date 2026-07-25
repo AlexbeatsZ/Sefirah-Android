@@ -32,6 +32,9 @@
 - Android Chinese localization must include the generic `values-zh`, `values-zh-rCN`, and `values-zh-rTW` resource sets because the Redmi K70 locale resolved to Traditional Chinese resources during physical testing. Keep all three sets complete and update hard-coded accessibility descriptions alongside visible labels.
 - Bluetooth action rows use four equal layout slots at 40 dp minimum height and 12 sp text. Rows with fewer actions retain empty slots so every visible action button has the same width; the saved-device action therefore matches the width of actions in the four-button row.
 - File transfer and Bluetooth handoff now share the Compose `DeviceSelectionDialog`; this avoids falling back to Xiaomi's native `AlertDialog` styling. `adb install -r` preserved the Meta PC binding, and the final QCY AilyBuds Lite regression ended with PC connected and Redmi K70 disconnected.
+- Remote storage already exports Android storage volumes through SFTP to the Windows Cloud Files provider. The desired follow-up is a per-device selected-share model for Download, QQ, and WeChat folders rather than exporting the full volume.
+- `SftpFeature` currently uses `PublickeyAuthenticator { _, _, _ -> true }`, which accepts any public key. Before broader remote-storage use, authentication must bind to the paired desktop identity and every SFTP operation must be confined to canonical paths in the selected-share allowlist.
+- Android all-files access still cannot read another app's private `/Android/data/<package>` tree on modern Android. On the tested Redmi K70, usable public exports already include `Download/QQ`, `Download/WeiXin`, `Pictures/QQ`, `Pictures/WeChat`, and related media directories.
 
 # Task Board
 
@@ -48,6 +51,8 @@
 - [x] Install Shizuku on the Redmi K70 and verify the Sefirah privileged UserService end to end.
 - [x] Fix phone Bluetooth catalog discovery in Shizuku UserService and validate both QCY headsets through `sefirahctl`.
 - [x] Redesign the Android Bluetooth card around the selected PC with three sections, expandable actions, and visibility settings.
+- [ ] Replace whole-volume SFTP export with capability-gated selected shares for Download/QQ/WeChat while keeping backward compatibility with current `SftpServerInfo.paths`.
+- [ ] Reject arbitrary SFTP public keys and enforce a canonical-path allowlist for every read/write/rename/delete operation.
 - [x] Install the updated APK in place and physically validate QCY AilyBuds Lite handoff, disconnect, visibility, and live UI state.
 - [x] Fully localize the Android UI and accessibility labels into Chinese, including settings, device controls, dialogs, navigation, and default PC actions.
 - [x] Standardize Bluetooth action button width/height and enlarge action text while retaining one-row actions.
