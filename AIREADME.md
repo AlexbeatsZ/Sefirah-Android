@@ -83,3 +83,24 @@
 - [done] 手机服务器证书固定值经备份和 SHA-256 验证后修复。
 - [paused] 平板系统层断流仍未解决；用户要求结束本轮。
 - [pending] 后续先恢复 USB MTP/ADB 枚举并抓断流 logcat，再检查 HyperOS 应用省电“无限制”、后台自启动和网络策略。
+
+# 2026-07-26 Android Data / QQ SFTP
+
+## Project Goal
+
+- 通过 Shizuku 让已配对 Windows 设备读取
+  `/Android/data/com.tencent.mobileqq/Tencent/QQfile_recv`。
+
+## Lessons Learned
+
+- Android 11+ 的普通应用即使有 all-files access 也不能可靠读取其他应用的 `Android/data`；实际 SFTP 文件系统操作必须落在 Shizuku shell 服务中。
+- SFTP 服务生命周期不能直接绑定瞬时设备连接。最后客户端断开后延迟 120 秒关闭，设备重连则取消关闭，以保持端口和凭据稳定。
+- 不应使用 connected instrumentation test 验证安装包：测试部署会卸载/重装应用，清除 Room 数据和 Android Keystore；只用 `adb install -r` 做保留数据升级。
+
+## Task Board
+
+- [x] 实现 Shizuku 特权 SFTP 文件系统桥和 Android `data` 路径访问。
+- [x] 增加 SFTP 断连宽限期，避免 HyperOS 短暂重连轮换凭据。
+- [x] `gradlew test :app:assembleDebug` 构建成功。
+- [x] 通过 `adb install -r` 将 v45 部署到 Redmi K70 与 Xiaomi Pad 6 Pro。
+- [x] Windows 端成功读取平板 QQ 下载目录中的 PNG 文件；手机目录可枚举且当前无顶层已完成下载。

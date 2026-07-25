@@ -14,7 +14,7 @@ android {
     defaultConfig {
         applicationId = "com.castle.sefirah"
 
-        versionCode = 43
+        versionCode = 45
         versionName = "3.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -96,6 +96,9 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit)
+    debugImplementation(libs.apache.sshd.core)
+    debugImplementation(libs.apache.sshd.sftp)
+    debugImplementation(libs.bcpkix.jdk18on)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 }

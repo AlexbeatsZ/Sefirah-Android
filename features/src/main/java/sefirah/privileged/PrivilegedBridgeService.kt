@@ -16,6 +16,8 @@ import java.util.concurrent.TimeUnit
 
 @Keep
 class PrivilegedBridgeService() : IPrivilegedBridge.Stub() {
+    private val privilegedSftpServer = PrivilegedSftpServer()
+
     @Keep
     constructor(context: Context) : this() {
         BluetoothShellController.initialize(context)
@@ -31,6 +33,13 @@ class PrivilegedBridgeService() : IPrivilegedBridge.Stub() {
 
     override fun executeBluetoothCommand(action: String, deviceKey: String?, enabled: Boolean): String =
         BluetoothShellController.execute(action, deviceKey, enabled)
+
+    override fun startSftpServer(username: String, password: String, rootPath: String): Int =
+        privilegedSftpServer.start(username, password, rootPath)
+
+    override fun stopSftpServer() {
+        privilegedSftpServer.stop()
+    }
 }
 
 private object PrivilegedClipboardReader {

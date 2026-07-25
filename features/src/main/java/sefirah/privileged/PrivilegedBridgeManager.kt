@@ -130,6 +130,21 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
             runCatching { bridge?.executeBluetoothCommand(action, deviceKey, enabled) }.getOrNull()
         }
 
+    suspend fun startSftpServer(username: String, password: String, rootPath: String): Int? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                bridge?.startSftpServer(username, password, rootPath)?.takeIf { it > 0 }
+            }.onFailure {
+                Log.e(TAG, "Failed to start privileged SFTP server", it)
+            }.getOrNull()
+        }
+
+    suspend fun stopSftpServer() = withContext(Dispatchers.IO) {
+        runCatching { bridge?.stopSftpServer() }
+            .onFailure { Log.w(TAG, "Failed to stop privileged SFTP server", it) }
+        Unit
+    }
+
     private fun refreshAndBind() {
         runCatching {
             if (Shizuku.isPreV11()) {
@@ -167,7 +182,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
 
     companion object {
         private const val PERMISSION_REQUEST_CODE = 7821
-        private const val SERVICE_VERSION = 2
+        private const val SERVICE_VERSION = 3
         private const val BIND_TIMEOUT_MS = 6_000L
         private const val BIND_RETRY_INTERVAL_MS = 1_000L
         private const val TAG = "PrivilegedBridgeManager"
