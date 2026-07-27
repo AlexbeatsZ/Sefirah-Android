@@ -111,7 +111,8 @@
 
 ## Current State
 
-- Android v46 is installed in place on Xiaomi Pad 6 Pro with app data, pairing, and Shizuku authorization retained.
+- Android v46 is installed in place on Xiaomi Pad 6 Pro and Redmi K70 with app data, pairing, and Shizuku authorization retained.
+- Redmi K70 trusts the `Meta@META-OMEN` ADB key for wireless debugging. Its TLS connect port is dynamic; discover the current `_adb-tls-connect._tcp` endpoint with `adb mdns services` instead of persisting an IP:port pair.
 - A per-device connect now waits up to six seconds for the requested state. The app-side Binder wrapper caps the complete call at nine seconds and removes the stale UserService on timeout.
 
 ## Evidence
