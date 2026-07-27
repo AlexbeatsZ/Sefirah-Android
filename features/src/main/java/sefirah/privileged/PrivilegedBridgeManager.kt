@@ -13,6 +13,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,6 +38,9 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
     private var bridge: IPrivilegedBridge? = null
     private var started = false
     private var lastBindAttemptAt = 0L
+    private val bridgeCallExecutor = Executors.newFixedThreadPool(2) { runnable ->
+        Thread(runnable, "Sefirah-PrivilegedBridgeCall").apply { isDaemon = true }
+    }
 
     private val userServiceArgs = Shizuku.UserServiceArgs(
         ComponentName(appContext.packageName, PrivilegedBridgeService::class.java.name),
@@ -107,7 +114,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
     }
 
     suspend fun getBluetoothCatalog(): String? = withContext(Dispatchers.IO) {
-        runCatching { bridge?.getBluetoothCatalog() }.getOrNull()
+        callBluetoothBridge("catalog") { it.getBluetoothCatalog() }
     }
 
     suspend fun ensureReady(timeoutMillis: Long = BIND_TIMEOUT_MS): Boolean = withContext(Dispatchers.IO) {
@@ -127,7 +134,9 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
 
     suspend fun executeBluetoothCommand(action: String, deviceKey: String?, enabled: Boolean): String? =
         withContext(Dispatchers.IO) {
-            runCatching { bridge?.executeBluetoothCommand(action, deviceKey, enabled) }.getOrNull()
+            callBluetoothBridge("command:$action") {
+                it.executeBluetoothCommand(action, deviceKey, enabled)
+            }
         }
 
     suspend fun startSftpServer(username: String, password: String, rootPath: String): Int? =
@@ -180,11 +189,40 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         }
     }
 
+    private fun <T> callBluetoothBridge(operation: String, call: (IPrivilegedBridge) -> T): T? {
+        val currentBridge = bridge ?: return null
+        val future = bridgeCallExecutor.submit(Callable { call(currentBridge) })
+        return try {
+            future.get(BLUETOOTH_BRIDGE_CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            future.cancel(true)
+            Log.e(TAG, "Privileged Bluetooth $operation timed out; recycling the bridge")
+            recycleBridge()
+            null
+        } catch (error: Exception) {
+            Log.e(TAG, "Privileged Bluetooth $operation failed", error)
+            null
+        }
+    }
+
+    @Synchronized
+    private fun recycleBridge() {
+        bridge = null
+        _status.value = PrivilegedBridgeStatus.Unavailable
+        lastBindAttemptAt = 0L
+        runCatching {
+            Shizuku.unbindUserService(userServiceArgs, serviceConnection, true)
+        }.onFailure {
+            Log.w(TAG, "Failed to recycle privileged bridge", it)
+        }
+    }
+
     companion object {
         private const val PERMISSION_REQUEST_CODE = 7821
-        private const val SERVICE_VERSION = 3
+        private const val SERVICE_VERSION = 4
         private const val BIND_TIMEOUT_MS = 6_000L
         private const val BIND_RETRY_INTERVAL_MS = 1_000L
+        private const val BLUETOOTH_BRIDGE_CALL_TIMEOUT_MS = 9_000L
         private const val TAG = "PrivilegedBridgeManager"
     }
 }

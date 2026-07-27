@@ -12,6 +12,8 @@ import android.os.Process
 import androidx.annotation.Keep
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.TimeUnit
 
 @Keep
@@ -103,6 +105,11 @@ private object BluetoothShellController {
     private var adapterLookupError: String? = null
     @Volatile
     private var shellAdapter: BluetoothAdapter? = null
+    @Volatile
+    private var perDeviceControlHealthy = true
+    private val deviceActionExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "Sefirah-BluetoothAction").apply { isDaemon = true }
+    }
 
     fun initialize(context: Context) {
         serviceContext = context
@@ -170,13 +177,13 @@ private object BluetoothShellController {
                         it.address.equals(deviceKey, ignoreCase = true)
                     } ?: return commandResult(action, false, errorCode = "device_not_found")
 
-                    val success = invokeDeviceAction(device, action)
+                    val result = executeDeviceAction(device, action)
                     commandResult(
                         action = action,
-                        success = success,
+                        success = result.success,
                         radioEnabled = adapter.isEnabled,
-                        deviceConnected = isConnected(device),
-                        errorCode = if (success) null else "per_device_control_unsupported",
+                        deviceConnected = result.deviceConnected,
+                        errorCode = result.errorCode,
                     )
                 }
 
@@ -276,8 +283,64 @@ private object BluetoothShellController {
     }.getOrNull()
 
     private fun supportsPerDeviceControl(): Boolean =
-        BluetoothDevice::class.java.methods.any { it.name == ACTION_CONNECT && it.parameterCount == 0 } &&
+        perDeviceControlHealthy &&
+            BluetoothDevice::class.java.methods.any { it.name == ACTION_CONNECT && it.parameterCount == 0 } &&
             BluetoothDevice::class.java.methods.any { it.name == ACTION_DISCONNECT && it.parameterCount == 0 }
+
+    private fun executeDeviceAction(device: BluetoothDevice, action: String): DeviceActionResult {
+        if (!supportsPerDeviceControl()) {
+            return DeviceActionResult(
+                success = false,
+                deviceConnected = null,
+                errorCode = "per_device_control_unsupported",
+            )
+        }
+
+        val expectedConnected = action == ACTION_CONNECT
+        val future = deviceActionExecutor.submit<DeviceActionResult> {
+            if (isConnected(device) == expectedConnected) {
+                return@submit DeviceActionResult(
+                    success = true,
+                    deviceConnected = expectedConnected,
+                )
+            }
+            if (!invokeDeviceAction(device, action)) {
+                return@submit DeviceActionResult(
+                    success = false,
+                    deviceConnected = isConnected(device),
+                    errorCode = "per_device_control_rejected",
+                )
+            }
+
+            val reachedTargetState = waitForDeviceState(device, expectedConnected)
+            DeviceActionResult(
+                success = reachedTargetState,
+                deviceConnected = isConnected(device),
+                errorCode = if (reachedTargetState) null else "device_state_timeout",
+            )
+        }
+
+        return try {
+            future.get(DEVICE_ACTION_CALL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            future.cancel(true)
+            perDeviceControlHealthy = false
+            DeviceActionResult(
+                success = false,
+                deviceConnected = null,
+                errorCode = "per_device_control_timeout",
+            )
+        }
+    }
+
+    private fun waitForDeviceState(device: BluetoothDevice, connected: Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + DEVICE_STATE_TIMEOUT_MS
+        while (System.currentTimeMillis() < deadline) {
+            if (isConnected(device) == connected) return true
+            Thread.sleep(DEVICE_STATE_POLL_INTERVAL_MS)
+        }
+        return false
+    }
 
     private fun invokeDeviceAction(device: BluetoothDevice, action: String): Boolean {
         val method = device.javaClass.methods.firstOrNull {
@@ -329,7 +392,16 @@ private object BluetoothShellController {
         }
         .toString()
 
+    private data class DeviceActionResult(
+        val success: Boolean,
+        val deviceConnected: Boolean?,
+        val errorCode: String? = null,
+    )
+
     private const val RADIO_COMMAND_ATTEMPTS = 3
     private const val RADIO_STATE_TIMEOUT_MS = 2_000L
     private const val RADIO_STATE_POLL_INTERVAL_MS = 250L
+    private const val DEVICE_STATE_TIMEOUT_MS = 6_000L
+    private const val DEVICE_ACTION_CALL_TIMEOUT_MS = 8_000L
+    private const val DEVICE_STATE_POLL_INTERVAL_MS = 250L
 }

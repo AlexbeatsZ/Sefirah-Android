@@ -23,6 +23,7 @@
 - The first full Android build installed SDK Build Tools 36.0.0 at `C:\Users\Meta\AppData\Local\Android\Sdk\build-tools\36.0.0`. Gradle distributions and Maven dependencies are shared under `C:\Users\Meta\.gradle`; project build outputs remain under each module's `build` directory.
 - `test :app:assembleDebug` passes on Temurin 17.0.19 and Gradle 9.3.0. Four new unit tests pass, and the debug APK is generated at `app/build/outputs/apk/debug/app-debug.apk`; do not install this debug-signed APK over an existing official installation when preserving pairings.
 - Shizuku `13.6.0.r1086.2650830c` is installed on the Redmi K70 and its adb-mode server was started successfully. Sefirah has `API_V23` permission and binds a live shell-owned `com.castle.sefirah:privileged` UserService, so remaining Bluetooth failures are beyond Shizuku installation/authorization.
+- Hidden `BluetoothDevice.connect()` / `disconnect()` calls are asynchronous and may block or report acceptance before the profile state changes. Run them on a bounded worker, wait for the requested state, return a precise timeout error, and recycle the Shizuku UserService when the outer Binder call stops responding.
 - Shizuku cannot be replaced by silently embedding shell/root privilege in an ordinary APK. On a non-root device its server must be started again after reboot through ADB/wireless debugging; trusted-WLAN auto-start can reduce this burden but is still an explicit Shizuku/device configuration.
 - Shizuku UserService is not a normal application process, so Android does not initialize the Bluetooth mainline module's `BluetoothServiceManager`. On Redmi K70 this made `BluetoothManager.adapter`, hidden `BluetoothAdapter.createAdapter`, and `getDefaultAdapter()` return null even though the radio was on. Initialize `BluetoothFrameworkInitializer` with `android.os.BluetoothServiceManager`, then bind `bluetooth_manager` directly and cache the resulting adapter.
 - The Windows `sefirahctl` path is the physical-device regression harness: `bluetooth list phone` now returns QCY-T13 and QCY AilyBuds Lite with real addresses and connection state, while `bluetooth discover` matches them to the PC catalog. Reinstalling with `adb install -r` retained the existing binding throughout validation.
@@ -54,6 +55,7 @@
 - [ ] Replace whole-volume SFTP export with capability-gated selected shares for Download/QQ/WeChat while keeping backward compatibility with current `SftpServerInfo.paths`.
 - [ ] Reject arbitrary SFTP public keys and enforce a canonical-path allowlist for every read/write/rename/delete operation.
 - [x] Install the updated APK in place and physically validate QCY AilyBuds Lite handoff, disconnect, visibility, and live UI state.
+- [x] Bound and verify privileged Bluetooth actions, add Binder timeout recovery, bump the UserService generation, and deploy Android v46 in place.
 - [x] Fully localize the Android UI and accessibility labels into Chinese, including settings, device controls, dialogs, navigation, and default PC actions.
 - [x] Standardize Bluetooth action button width/height and enlarge action text while retaining one-row actions.
 - [x] Reuse the app-styled file-transfer device selector for Bluetooth “switch to other device”.
@@ -104,3 +106,16 @@
 - [x] `gradlew test :app:assembleDebug` 构建成功。
 - [x] 通过 `adb install -r` 将 v45 部署到 Redmi K70 与 Xiaomi Pad 6 Pro。
 - [x] Windows 端成功读取平板 QQ 下载目录中的 PNG 文件；手机目录可枚举且当前无顶层已完成下载。
+
+# 2026-07-28 Privileged Bluetooth Timeout Recovery
+
+## Current State
+
+- Android v46 is installed in place on Xiaomi Pad 6 Pro with app data, pairing, and Shizuku authorization retained.
+- A per-device connect now waits up to six seconds for the requested state. The app-side Binder wrapper caps the complete call at nine seconds and removes the stale UserService on timeout.
+
+## Evidence
+
+- Three consecutive attempts to connect the unavailable `84:AC:60:B4:EC:25` headset returned `device_state_timeout` in 6.32–6.36 seconds.
+- A full catalog query succeeded immediately after every failed attempt with six devices and no error; the former persistent bridge timeout did not recur.
+- `:features:testDebugUnitTest :app:assembleDebug` completed successfully (204 tasks).
