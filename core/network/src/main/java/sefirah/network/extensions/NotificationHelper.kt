@@ -127,5 +127,5 @@ fun NetworkService.setNotification(
         notificationBuilder.addAction(R.drawable.ic_launcher_foreground, getString(R.string.send_clipboard), clipboardPendingIntent)
     }
 
-    startForeground(notificationId, notificationBuilder.build())
+    ensureForeground(notificationId, notificationBuilder.build())
 }

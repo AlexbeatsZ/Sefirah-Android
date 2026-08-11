@@ -83,7 +83,7 @@
     <string name="android_app_button">安卓APP</string>
     <string name="windows_app_button">Windows APP</string>
     <string name="clipboard_sync_preference">与PC同步剪贴板</string>
-    <string name="clipboard_sync_subtitle">[需要无障碍权限] 检测并将剪贴板内容同步至桌面端</string>
+    <string name="clipboard_sync_subtitle">使用 Shizuku 在后台读取剪贴板；无障碍服务仅作为可选备用方案</string>
     <string name="image_clipboard_preference">将接收的图片添加至剪贴板</string>
     <string name="image_clipboard_subtitle">将接收的图片将被复制至剪贴板</string>
     <string name="notification_sync_preference">同步通知</string>

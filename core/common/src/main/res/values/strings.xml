@@ -106,7 +106,7 @@
 
     <!-- Preferences -->
     <string name="clipboard_sync_preference">Sync clipboard with desktop</string>
-    <string name="clipboard_sync_subtitle">[Requires accessibility service permission] Detects clipboard changes and syncs them to desktop</string>
+    <string name="clipboard_sync_subtitle">Uses Shizuku for background clipboard access. Accessibility remains available as an optional fallback</string>
     <string name="image_clipboard_preference">Add received Images to clipboard</string>
     <string name="image_clipboard_subtitle">Copies the receiving image files to your clipboard</string>
     <string name="notification_sync_preference">Sync notifications</string>

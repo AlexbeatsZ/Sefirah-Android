@@ -123,7 +123,6 @@ class NetworkDiscovery @Inject constructor(
 
     private fun stopDiscovery() {
         try {
-            if (discoveryJob?.isActive == false) return
             Log.d(TAG, "Stopping discovery")
             discoveryJob?.cancel()
             discoveryJob = null
@@ -176,6 +175,12 @@ class NetworkDiscovery @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to unregister network callback", e)
         }
+    }
+
+    /** Stops sockets, NSD work, and callbacks owned by the current NetworkService instance. */
+    fun shutdown() {
+        stopDiscovery()
+        unregister()
     }
 
     private val networkCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

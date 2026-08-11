@@ -5,10 +5,12 @@ import android.net.Uri
 import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
 import sefirah.clipboard.ClipboardHandler
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.interfaces.NetworkManager
@@ -34,12 +36,17 @@ class FileTransferService @Inject constructor(
     private val clipboardHandler: ClipboardHandler
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val activeTransfers = ConcurrentHashMap<String, Job>()
+    private val activeTransfers = ConcurrentHashMap<String, ActiveTransfer>()
+    private val transferSlots = Semaphore(MAX_CONCURRENT_TRANSFERS)
 
     fun sendFiles(deviceId: String, fileUris: List<Uri>) {
+        if (!transferSlots.tryAcquire()) {
+            Log.w(TAG, "Rejecting send request: transfer limit reached")
+            return
+        }
         val transferId = UUID.randomUUID().toString()
 
-        val job = scope.launch {
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 val device = deviceManager.getPairedDevice(deviceId)
                     ?: throw IOException("Device $deviceId not found")
@@ -61,24 +68,35 @@ class FileTransferService @Inject constructor(
                     notifications = notifications
                 )
 
-                networkManager.sendMessage(deviceId, FileTransferInfo(files = filesMetadata, serverInfo = serverInfo))
+                val announced = networkManager.sendMessageAwait(
+                    deviceId,
+                    FileTransferInfo(files = filesMetadata, serverInfo = serverInfo),
+                )
+                if (!announced) throw IOException("Failed to announce file transfer")
                 handler.send()
             } catch (e: CancellationException) {
                 Log.d(TAG, "Transfer $transferId cancelled")
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Send files failed", e)
-            } finally {
-                activeTransfers.remove(transferId)
             }
         }
-        activeTransfers[transferId] = job
+        job.invokeOnCompletion {
+            activeTransfers.remove(transferId)
+            transferSlots.release()
+        }
+        activeTransfers[transferId] = ActiveTransfer(deviceId, job)
+        job.start()
     }
 
     fun receiveFiles(deviceId: String, transfer: FileTransferInfo) {
+        if (!transferSlots.tryAcquire()) {
+            Log.w(TAG, "Rejecting receive request: transfer limit reached")
+            return
+        }
         val transferId = UUID.randomUUID().toString()
 
-        val job = scope.launch {
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 val device = deviceManager.getPairedDevice(deviceId)
                     ?: throw IOException("Device $deviceId not found")
@@ -106,23 +124,38 @@ class FileTransferService @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Receive files failed", e)
-            } finally {
-                activeTransfers.remove(transferId)
             }
         }
-        activeTransfers[transferId] = job
+        job.invokeOnCompletion {
+            activeTransfers.remove(transferId)
+            transferSlots.release()
+        }
+        activeTransfers[transferId] = ActiveTransfer(deviceId, job)
+        job.start()
     }
 
     fun cancelTransfer(transferId: String) {
-        activeTransfers[transferId]?.cancel()
+        activeTransfers[transferId]?.job?.cancel()
         notifications.cancel(transferId)
-        activeTransfers.remove(transferId)
     }
+
+    fun cancelTransfersForDevice(deviceId: String) {
+        activeTransfers.values
+            .filter { it.deviceId == deviceId }
+            .forEach { it.job.cancel() }
+    }
+
+    fun shutdown() {
+        activeTransfers.values.forEach { it.job.cancel() }
+    }
+
+    private data class ActiveTransfer(val deviceId: String, val job: Job)
 
     companion object {
         private const val TAG = "FileTransferManager"
         val PORT_RANGE = 5152..5169
         const val ACTION_CANCEL_TRANSFER = "CANCEL_TRANSFER"
         const val EXTRA_TRANSFER_ID = "extra_transfer_id"
+        private const val MAX_CONCURRENT_TRANSFERS = 4
     }
 }

@@ -58,9 +58,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.rememberAsyncImagePainter
 import com.castle.sefirah.presentation.settings.components.SwitchPreferenceWidget
 import com.castle.sefirah.presentation.settings.components.TextPreferenceWidget
-import sefirah.clipboard.ClipboardListener
 import sefirah.common.R
-import sefirah.common.util.isAccessibilityServiceEnabled
 import sefirah.common.util.isNotificationListenerEnabled
 import sefirah.common.util.openAppSettings
 import sefirah.domain.model.PairedDevice
@@ -181,21 +179,13 @@ fun DeviceSettingsScreen(
                 }
 
             item {
-                SwitchPermissionPrefWidget(
+                SwitchPreferenceWidget(
                     title = stringResource(R.string.clipboard_sync_preference),
                     subtitle = stringResource(R.string.clipboard_sync_subtitle),
                     checkedIcon = ImageVector.vectorResource(R.drawable.ic_content_copy_fill),
                     uncheckedIcon = ImageVector.vectorResource(R.drawable.ic_content_copy),
-                    granted = permissionStates.accessibilityGranted,
-                    checked = preferences.clipboardSync && permissionStates.accessibilityGranted,
-                    permission = null,
-                    onRequest = {
-                        if(!isAccessibilityServiceEnabled(context, "${context.packageName}/${ClipboardListener::class.java.canonicalName}") ) {
-                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }
-                    },
+                    checked = preferences.clipboardSync,
                     onCheckedChanged = { viewModel.saveClipboardSyncSettings(it) },
-                    viewModel = viewModel
                 )
             }
 

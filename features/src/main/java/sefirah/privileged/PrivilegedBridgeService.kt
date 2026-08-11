@@ -6,6 +6,7 @@ import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.Context
 import android.os.IBinder
 import android.os.Process
@@ -69,7 +70,11 @@ private object PrivilegedClipboardReader {
             }.getOrNull() ?: continue
 
             if (result.itemCount == 0) return null
-            return result.getItemAt(0).text?.toString()
+            return ClipboardTextPolicy.acceptedText(
+                text = result.getItemAt(0).text,
+                isSensitive = result.description.extras
+                    ?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) == true,
+            )
         }
         return null
     }

@@ -1,6 +1,7 @@
 package sefirah.domain.util
 
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
@@ -108,14 +109,22 @@ object MessageSerializer {
     }
 
     fun serialize(message: SocketMessage): String? {
-        return runCatching {
-             json.encodeToString(SocketMessage.serializer(), message)
-        }.getOrNull()
+        return try {
+            json.encodeToString(SocketMessage.serializer(), message)
+        } catch (_: SerializationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 
     fun deserialize(jsonString: String): SocketMessage? {
-        return runCatching {
+        return try {
             json.decodeFromString<SocketMessage>(jsonString)
-        }.getOrNull()
+        } catch (_: SerializationException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 }

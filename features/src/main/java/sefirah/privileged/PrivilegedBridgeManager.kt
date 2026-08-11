@@ -36,6 +36,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
 
     @Volatile
     private var bridge: IPrivilegedBridge? = null
+    @Volatile
     private var started = false
     private var lastBindAttemptAt = 0L
     private val bridgeCallExecutor = Executors.newFixedThreadPool(2) { runnable ->
@@ -52,6 +53,11 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            if (!started) {
+                runCatching { Shizuku.unbindUserService(userServiceArgs, this, true) }
+                    .onFailure { Log.w(TAG, "Discarding late privileged bridge callback failed", it) }
+                return
+            }
             Log.i(TAG, "Privileged bridge connected")
             bridge = IPrivilegedBridge.Stub.asInterface(binder)
             _status.value = if (binder.pingBinder()) {
@@ -68,10 +74,12 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         }
     }
 
-    private val binderReceivedListener = Shizuku.OnBinderReceivedListener { refreshAndBind() }
+    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
+        if (started) refreshAndBind()
+    }
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        bridge = null
-        _status.value = PrivilegedBridgeStatus.Unavailable
+        destroyDetachedBridge()
+        if (started) _status.value = PrivilegedBridgeStatus.Unavailable
     }
     private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
         if (requestCode == PERMISSION_REQUEST_CODE) {
@@ -88,6 +96,40 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
         Shizuku.addRequestPermissionResultListener(permissionResultListener)
+    }
+
+    /**
+     * Releases the non-daemon UserService when NetworkService is explicitly torn down. The
+     * singleton remains restartable in the same app process, so its executor is intentionally kept.
+     */
+    @Synchronized
+    fun stop() {
+        if (!started && bridge == null) return
+
+        runCatching { bridge?.stopSftpServer() }
+            .onFailure { Log.w(TAG, "Failed to stop privileged SFTP during bridge shutdown", it) }
+
+        val removedByShizuku = runCatching {
+            if (Shizuku.pingBinder()) {
+                Shizuku.unbindUserService(userServiceArgs, serviceConnection, true)
+                true
+            } else {
+                false
+            }
+        }.onFailure {
+            Log.w(TAG, "Failed to remove privileged bridge through Shizuku", it)
+        }.getOrDefault(false)
+
+        if (!removedByShizuku) destroyDetachedBridge() else bridge = null
+
+        if (started) {
+            Shizuku.removeBinderReceivedListener(binderReceivedListener)
+            Shizuku.removeBinderDeadListener(binderDeadListener)
+            Shizuku.removeRequestPermissionResultListener(permissionResultListener)
+        }
+        started = false
+        lastBindAttemptAt = 0L
+        _status.value = PrivilegedBridgeStatus.Unavailable
     }
 
     fun requestPermission() {
@@ -155,6 +197,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
     }
 
     private fun refreshAndBind() {
+        if (!started) return
         runCatching {
             if (Shizuku.isPreV11()) {
                 _status.value = PrivilegedBridgeStatus.Unavailable
@@ -170,6 +213,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
 
     @Synchronized
     private fun bind() {
+        if (!started) return
         if (bridge?.asBinder()?.pingBinder() == true) {
             _status.value = PrivilegedBridgeStatus.Ready
             return
@@ -215,6 +259,14 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         }.onFailure {
             Log.w(TAG, "Failed to recycle privileged bridge", it)
         }
+    }
+
+    private fun destroyDetachedBridge() {
+        val detached = bridge
+        bridge = null
+        if (detached?.asBinder()?.pingBinder() != true) return
+        runCatching { detached.destroy() }
+            .onFailure { Log.w(TAG, "Failed to destroy detached privileged bridge", it) }
     }
 
     companion object {

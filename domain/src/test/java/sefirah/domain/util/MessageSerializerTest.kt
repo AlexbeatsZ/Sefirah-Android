@@ -2,6 +2,7 @@ package sefirah.domain.util
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import sefirah.domain.model.BluetoothCatalogDevice
@@ -14,6 +15,11 @@ import sefirah.domain.model.BluetoothHeadsetVisibilityRequest
 import sefirah.domain.model.DeviceInfo
 
 class MessageSerializerTest {
+    @Test
+    fun `malformed frame is rejected without escaping the connection loop`() {
+        assertNull(MessageSerializer.deserialize("{not-json"))
+    }
+
     @Test
     fun `handoff command round trips through socket serializer`() {
         val message = BluetoothHandoffCommand(

@@ -1,6 +1,7 @@
 package sefirah.network
 
 import android.annotation.SuppressLint
+import android.app.Notification
 import android.app.Service
 import android.app.WallpaperManager
 import android.content.BroadcastReceiver
@@ -25,12 +26,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import sefirah.actions.ActionFeature
@@ -70,6 +75,7 @@ import sefirah.domain.model.PairMessage
 import sefirah.domain.model.PairedDevice
 import sefirah.domain.model.PendingDeviceApproval
 import sefirah.domain.model.ProtocolCapabilities
+import sefirah.domain.model.ProtocolLimits
 import sefirah.domain.model.ReconnectBackoffPolicy
 import sefirah.domain.model.SocketMessage
 import sefirah.domain.util.MessageSerializer
@@ -162,7 +168,14 @@ class NetworkService : Service() {
 
     private var tcpServerSocket: javax.net.ssl.SSLServerSocket? = null
     private var serverAcceptJob: Job? = null
+    @Volatile private var shuttingDown = false
+    private val pendingHandshakeSlots = Semaphore(MAX_PENDING_HANDSHAKES)
+    private val pendingHandshakeSockets = ConcurrentHashMap.newKeySet<SSLSocket>()
     private var wifiLock: WifiManager.WifiLock? = null
+    @Volatile private var foregroundStarted = false
+    private val wallpaperCacheLock = Any()
+    @Volatile private var cachedWallpaperLoaded = false
+    @Volatile private var cachedWallpaper: String? = null
 
     private val connections = ConcurrentHashMap<String, DeviceConnection>()
     private val connectingDeviceIds = ConcurrentHashMap.newKeySet<String>()
@@ -264,6 +277,7 @@ class NetworkService : Service() {
         privilegedBridgeManager.start()
         registerReceiver(screenOnReceiver, IntentFilter(Intent.ACTION_SCREEN_ON))
         registerReceiver(wifiStateReceiver, IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION))
+        registerReceiver(wallpaperChangedReceiver, IntentFilter(Intent.ACTION_WALLPAPER_CHANGED))
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
         wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "$packageName:network").apply {
             setReferenceCounted(false)
@@ -318,10 +332,8 @@ class NetworkService : Service() {
 
         scope.launch {
             while (isActive) {
-                val hasConnectedPeer = deviceManager.pairedDevices.value.any {
-                    it.connectionState.isConnected
-                }
-                if (hasConnectedPeer && privilegedBridgeManager.status.value == PrivilegedBridgeStatus.Ready) {
+                val shouldReadClipboard = hasConnectedClipboardTarget()
+                if (shouldReadClipboard && privilegedBridgeManager.status.value == PrivilegedBridgeStatus.Ready) {
                     privilegedBridgeManager.readClipboardText()?.let { content ->
                         clipboardEventTracker.recordLocalText(content)?.let { eventId ->
                             sendClipboardMessage(
@@ -371,8 +383,22 @@ class NetworkService : Service() {
                             tcpServerSocket?.accept() as? SSLSocket
                         } ?: break
 
+                        if (!pendingHandshakeSlots.tryAcquire()) {
+                            Log.w(TAG, "Rejecting incoming connection: handshake limit reached")
+                            sslSocket.close()
+                            continue
+                        }
+
+                        pendingHandshakeSockets.add(sslSocket)
                         Log.d(TAG, "Accepted incoming connection from ${sslSocket.remoteSocketAddress}")
-                        launch { handleIncomingConnection(sslSocket) }
+                        launch {
+                            try {
+                                handleIncomingConnection(sslSocket)
+                            } finally {
+                                pendingHandshakeSockets.remove(sslSocket)
+                                pendingHandshakeSlots.release()
+                            }
+                        }
                     } catch (e: Exception) {
                         if (tcpServerSocket?.isClosed == true) {
                             Log.d(TAG, "Server socket closed, stopping acceptance loop")
@@ -393,14 +419,16 @@ class NetworkService : Service() {
     private suspend fun handleIncomingConnection(sslSocket: SSLSocket) {
         try {
             withContext(Dispatchers.IO) {
+                sslSocket.soTimeout = TLS_HANDSHAKE_TIMEOUT_MS
                 sslSocket.startHandshake()
+                sslSocket.soTimeout = 0
             }
 
             val readChannel = sslSocket.inputStream.toByteReadChannel()
             val writeChannel = sslSocket.outputStream.asByteWriteChannel()
 
             val authMessage = withTimeoutOrNull(10_000.milliseconds) {
-                readChannel.readUTF8Line()?.let {
+                readChannel.readUTF8Line(ProtocolLimits.AUTHENTICATION_FRAME_MAX_CHARS)?.let {
                     val message = MessageSerializer.deserialize(it)
                     message as? Authentication
                 }
@@ -598,7 +626,7 @@ class NetworkService : Service() {
 
             val authResponse = try {
                 withTimeoutOrNull(3000.milliseconds) {
-                    readChannel.readUTF8Line()?.let {
+                    readChannel.readUTF8Line(ProtocolLimits.AUTHENTICATION_FRAME_MAX_CHARS)?.let {
                         MessageSerializer.deserialize(it) as? Authentication
                     }
                 }
@@ -646,15 +674,7 @@ class NetworkService : Service() {
     @SuppressLint("MissingPermission")
     fun sendDeviceInfo(device: PairedDevice) {
         try {
-            val wallpaper = try {
-                val wallpaperManager = WallpaperManager.getInstance(applicationContext)
-                wallpaperManager.drawable?.let { drawable ->
-                    drawableToBase64Compressed(drawable)
-                }
-            } catch (e: SecurityException) {
-                Log.w(TAG, "Unable to access wallpaper", e)
-                null
-            }
+            val wallpaper = getCachedWallpaper()
 
             val localPhoneNumbers = try {
                 TelephonyHelper.getAllPhoneNumbers(this).map { it.toDto() }
@@ -679,7 +699,7 @@ class NetworkService : Service() {
     suspend fun disconnect(deviceId: String) {
         deviceManager.getPairedDevice(deviceId)?.let {
             if (it.connectionState.isConnected) {
-                sendMessage(it.deviceId, Disconnect)
+                flushDisconnect(it.deviceId)
             }
             disconnectDevice(it, true)
         }
@@ -694,12 +714,14 @@ class NetworkService : Service() {
             scheduleReconnect(device.deviceId)
         }
         deviceManager.addOrUpdatePairedDevice(device.copy(connectionState = ConnectionState.Disconnected(forcedDisconnect)))
+        fileTransferService.cancelTransfersForDevice(device.deviceId)
         featureManager.onDisconnect(device.deviceId)
         removeConnection(device.deviceId)
     }
 
     private suspend fun disconnectDevice(device: DiscoveredDevice) {
         Log.i(TAG, "Disconnected ${device.deviceName}")
+        fileTransferService.cancelTransfersForDevice(device.deviceId)
         deviceManager.removeDiscoveredDevice(device.deviceId)
         removeConnection(device.deviceId)
     }
@@ -777,13 +799,23 @@ class NetworkService : Service() {
         }
     }
 
+    private suspend fun hasConnectedClipboardTarget(): Boolean {
+        for (device in deviceManager.pairedDevices.value) {
+            if (!device.connectionState.isConnected) continue
+            if (preferencesRepository.readClipboardSyncSettingsForDevice(device.deviceId).first()) {
+                return true
+            }
+        }
+        return false
+    }
+
     /**
      * Starts listening for messages from a device connection.
      */
     private fun startListeningForDevice(connection: DeviceConnection) {
         connection.startListening(
             getDevice = { deviceManager.getDevice(it) },
-            onMessage = { device, message -> scope.launch { handleMessage(device, message) } },
+            onMessage = { device, message -> handleMessage(device, message) },
             onClose = { closed ->
                 scope.launch {
                     val id = closed.deviceId
@@ -826,16 +858,20 @@ class NetworkService : Service() {
             localDevice.model
         )
         val jsonMessage = MessageSerializer.serialize(authenticationMessage)
+            ?: throw java.io.IOException("Failed to serialize Authentication message")
+        if (jsonMessage.length > ProtocolLimits.AUTHENTICATION_FRAME_MAX_CHARS) {
+            throw java.io.IOException("Authentication frame is too large")
+        }
         writeChannel.writeStringUtf8("$jsonMessage\n")
         writeChannel.flush()
     }
 
-    private fun sendContacts(device: PairedDevice) {
+    private suspend fun sendContacts(device: PairedDevice) {
         try {
             if (!isContactsPermissionGranted(this)) return
 
             ContactsHelper().getAllContacts(this).forEach { contact ->
-                sendMessage(device.deviceId, contact)
+                if (!sendMessageAwait(device.deviceId, contact)) return
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error sending contacts", e)
@@ -900,7 +936,12 @@ class NetworkService : Service() {
 
     // Connection management methods
     private fun setConnection(deviceId: String, connection: DeviceConnection): Boolean {
+        if (shuttingDown) {
+            connection.close()
+            return false
+        }
         val accepted = synchronized(connections) {
+            if (shuttingDown) return@synchronized false
             val existing = connections[deviceId]
             val shouldAccept = ConnectionCollisionPolicy.shouldAcceptCandidate(
                 localDeviceId = deviceManager.localDevice.deviceId,
@@ -949,37 +990,122 @@ class NetworkService : Service() {
     }
 
     fun sendMessage(deviceId: String, message: SocketMessage) {
-        connections[deviceId]?.sendMessage(message) ?: run {
+        val connection = connections[deviceId]
+        if (connection == null) {
             Log.w(TAG, "Cannot send message to $deviceId: no connection found")
+            return
+        }
+        if (!connection.sendMessage(message)) {
+            Log.w(TAG, "Closing overloaded connection to $deviceId")
+            connection.close()
         }
     }
 
+    /** Promote once; later notification refreshes are handled by NotificationCenter.notify(). */
+    @Synchronized
+    fun ensureForeground(notificationId: Int, notification: Notification) {
+        if (foregroundStarted) return
+        startForeground(notificationId, notification)
+        foregroundStarted = true
+    }
+
+    private val wallpaperChangedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            synchronized(wallpaperCacheLock) {
+                cachedWallpaper = null
+                cachedWallpaperLoaded = false
+            }
+        }
+    }
+
+    private fun getCachedWallpaper(): String? = synchronized(wallpaperCacheLock) {
+        if (!cachedWallpaperLoaded) {
+            cachedWallpaper = try {
+                WallpaperManager.getInstance(applicationContext).drawable?.let { drawable ->
+                    drawableToBase64Compressed(drawable)
+                }
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Unable to access wallpaper", e)
+                null
+            }
+            cachedWallpaperLoaded = true
+        }
+        cachedWallpaper
+    }
+
+    suspend fun sendMessageAwait(deviceId: String, message: SocketMessage): Boolean {
+        val connection = connections[deviceId] ?: return false
+        val delivered = withTimeoutOrNull(MESSAGE_SEND_TIMEOUT_MS) {
+            connection.sendMessageAndAwait(message)
+        } == true
+        if (!delivered) {
+            Log.w(TAG, "Timed out writing to $deviceId; closing connection")
+            connection.close()
+        }
+        return delivered
+    }
+
+    private suspend fun flushDisconnect(deviceId: String) {
+        val connection = connections[deviceId] ?: return
+        val delivered = withTimeoutOrNull(DISCONNECT_FLUSH_TIMEOUT_MS) {
+            connection.sendMessageAndAwait(Disconnect)
+        } == true
+        if (!delivered) Log.w(TAG, "Disconnect frame to $deviceId did not flush before close")
+    }
+
     override fun onDestroy() {
+        shuttingDown = true
         serverAcceptJob?.cancel()
         try {
             tcpServerSocket?.close()
         } catch (e: Exception) {
             Log.e(TAG, "Error closing TCP server", e)
         }
+        pendingHandshakeSockets.toList().forEach { socket ->
+            runCatching { socket.close() }
+        }
+        pendingHandshakeSockets.clear()
 
-        // Clean disconnect all peers
+        val connectionSnapshot = connections.entries.map { it.key to it.value }
+
+        // Flush paired peers concurrently under one global deadline, then tear down every
+        // accepted connection, including devices still waiting for pairing approval.
         runBlocking {
-            deviceManager.pairedDevices.value.forEach { device ->
-                if (device.connectionState.isConnected) {
-                    sendMessage(device.deviceId, Disconnect)
-                    disconnectDevice(device, true)
+            val pairedIds = deviceManager.pairedDevices.value.mapTo(mutableSetOf()) { it.deviceId }
+            withTimeoutOrNull(DISCONNECT_FLUSH_TIMEOUT_MS) {
+                coroutineScope {
+                    connectionSnapshot
+                        .filter { (deviceId, _) -> deviceId in pairedIds }
+                        .map { (_, connection) ->
+                            async { runCatching { connection.sendMessageAndAwait(Disconnect) } }
+                        }
+                        .awaitAll()
+                }
+            }
+
+            connectionSnapshot.forEach { (deviceId, _) ->
+                when (val device = deviceManager.getDevice(deviceId)) {
+                    is PairedDevice -> disconnectDevice(device, true)
+                    is DiscoveredDevice -> disconnectDevice(device)
+                    else -> Unit
                 }
             }
         }
+
+        connections.values.toList().forEach(DeviceConnection::close)
+        connections.clear()
 
         scope.cancel()
 
         unregisterReceiver(screenOnReceiver)
         unregisterReceiver(wifiStateReceiver)
+        unregisterReceiver(wallpaperChangedReceiver)
         wifiLock?.let { lock -> if (lock.isHeld) lock.release() }
         wifiLock = null
         deviceControlHandler.stop()
-        networkDiscovery.unregister()
+        networkDiscovery.shutdown()
+        privilegedBridgeManager.stop()
+        fileTransferService.shutdown()
 
         remotePlaybackFeature.release()
         smsFeature.stop()
@@ -990,6 +1116,7 @@ class NetworkService : Service() {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
+        foregroundStarted = false
         super.onDestroy()
     }
 
@@ -1012,5 +1139,9 @@ class NetworkService : Service() {
         private const val RECONNECT_INTERVAL_MS = 5_000L
         private const val HEARTBEAT_INTERVAL_MS = 10_000L
         private const val CONNECTION_STALE_TIMEOUT_MS = 30_000L
+        private const val TLS_HANDSHAKE_TIMEOUT_MS = 5_000
+        private const val MESSAGE_SEND_TIMEOUT_MS = 5_000L
+        private const val DISCONNECT_FLUSH_TIMEOUT_MS = 750L
+        private const val MAX_PENDING_HANDSHAKES = 8
     }
 }

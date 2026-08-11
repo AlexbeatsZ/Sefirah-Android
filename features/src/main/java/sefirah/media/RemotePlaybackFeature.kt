@@ -11,21 +11,23 @@ import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import androidx.media.VolumeProviderCompat
 import androidx.media.app.NotificationCompat
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.withContext
 import sefirah.Feature
 import sefirah.common.R
 import sefirah.common.notifications.AppNotifications
 import sefirah.common.notifications.NotificationCenter
+import sefirah.common.util.base64ToBitmap
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.interfaces.NetworkManager
+import sefirah.domain.interfaces.PreferencesRepository
 import sefirah.domain.model.AudioDeviceInfo
 import sefirah.domain.model.AudioInfoType
 import sefirah.domain.model.DevicePreferences
@@ -33,8 +35,6 @@ import sefirah.domain.model.MediaAction
 import sefirah.domain.model.MediaActionType
 import sefirah.domain.model.PlaybackInfo
 import sefirah.domain.model.PlaybackInfoType
-import sefirah.common.util.base64ToBitmap
-import sefirah.domain.interfaces.PreferencesRepository
 import sefirah.media.MediaActionReceiver.Companion.ACTION_NEXT
 import sefirah.media.MediaActionReceiver.Companion.ACTION_PLAY
 import sefirah.media.MediaActionReceiver.Companion.ACTION_PREVIOUS
@@ -52,9 +52,11 @@ class RemotePlaybackFeature @Inject constructor(
     private val preferencesRepository: PreferencesRepository,
     deviceManager: DeviceManager,
 ) : Feature(deviceManager) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    
     private var mediaSession: MediaSessionCompat? = null
+    private val thumbnailCache = ThumbnailCache<android.graphics.Bitmap>(
+        maxEntries = THUMBNAIL_CACHE_ENTRIES,
+        maxEncodedLength = MAX_THUMBNAIL_ENCODED_LENGTH,
+    )
     private val _activeSessionsByDevice = MutableStateFlow<Map<String, List<PlaybackInfo>>>(emptyMap())
     val activeSessionsByDevice: StateFlow<Map<String, List<PlaybackInfo>>> = _activeSessionsByDevice.asStateFlow()
     
@@ -113,40 +115,44 @@ class RemotePlaybackFeature @Inject constructor(
     }
 
     private suspend fun updateTimeline(deviceId: String, playbackSession: PlaybackInfo) {
-        _activeSessionsByDevice.update { currentMap ->
+        val updatedMap = _activeSessionsByDevice.updateAndGet { currentMap ->
             val currentSessions = currentMap.getOrDefault(deviceId, emptyList())
             val updatedSessions = currentSessions.map { session ->
                 if (session.source == playbackSession.source) {
-                    val updatedSession = session.copy(position = playbackSession.position)
-                    lastPositionUpdateTimeMap[session.source] = System.currentTimeMillis()
-                    showMediaSession(deviceId, updatedSession)
-                    updatedSession
+                    session.copy(position = playbackSession.position)
                 } else {
                     session
                 }
             }
             currentMap + (deviceId to updatedSessions)
         }
+        updatedMap[deviceId]
+            ?.firstOrNull { it.source == playbackSession.source }
+            ?.let { updatedSession ->
+                lastPositionUpdateTimeMap[updatedSession.source] = System.currentTimeMillis()
+                showMediaSession(deviceId, updatedSession)
+            }
     }
 
 
     private suspend fun updatePlaybackInfo(deviceId: String, playbackSession: PlaybackInfo) {
-        _activeSessionsByDevice.update { currentMap ->
+        val updatedMap = _activeSessionsByDevice.updateAndGet { currentMap ->
             val currentSessions = currentMap.getOrDefault(deviceId, emptyList())
             val updatedSessions = currentSessions.map { session ->
                 if (session.source == playbackSession.source) {
-                    val updatedSession = session.copy(
+                    session.copy(
                         isPlaying = playbackSession.isPlaying,
                         isShuffleActive = playbackSession.isShuffleActive,
                         playbackRate = playbackSession.playbackRate)
-                    showMediaSession(deviceId, updatedSession)
-                    updatedSession
                 } else {
                     session
                 }
             }
             currentMap + (deviceId to updatedSessions)
         }
+        updatedMap[deviceId]
+            ?.firstOrNull { it.source == playbackSession.source }
+            ?.let { showMediaSession(deviceId, it) }
     }
 
     private suspend fun addSession(deviceId: String, session: PlaybackInfo) {
@@ -163,18 +169,18 @@ class RemotePlaybackFeature @Inject constructor(
     }
 
     private suspend fun removeSession(deviceId: String, session: PlaybackInfo) {
-        _activeSessionsByDevice.update { currentMap ->
+        val updatedMap = _activeSessionsByDevice.updateAndGet { currentMap ->
             val currentSessions = currentMap.getOrDefault(deviceId, emptyList())
             val updatedSessions = currentSessions.filter { it.source != session.source }
             if (updatedSessions.isEmpty()) {
                 currentMap - deviceId
             } else {
-                showMediaSession(deviceId, updatedSessions.first())
                 currentMap + (deviceId to updatedSessions)
             }
         }
+        updatedMap[deviceId]?.firstOrNull()?.let { showMediaSession(deviceId, it) }
         // Release if no sessions exist for any device
-        if (_activeSessionsByDevice.value.isEmpty()) {
+        if (updatedMap.isEmpty()) {
             release()
         }
     }
@@ -193,13 +199,22 @@ class RemotePlaybackFeature @Inject constructor(
         }
 
         val remoteVolumeControlEnabled = preferencesRepository.readRemoteVolumeControlSettingsForDevice(deviceId).first()
+        val artwork = withContext(Dispatchers.Default) {
+            thumbnailCache.getOrLoad(session.thumbnail) { encodedThumbnail ->
+                base64ToBitmap(
+                    base64String = encodedThumbnail,
+                    maxEncodedLength = MAX_THUMBNAIL_ENCODED_LENGTH,
+                    maxDimension = MAX_THUMBNAIL_DIMENSION,
+                )
+            }
+        }
 
-        scope.launch(Dispatchers.Main) {
+        withContext(Dispatchers.Main.immediate) {
             val metadata = MediaMetadataCompat.Builder()
                     .putString(MediaMetadataCompat.METADATA_KEY_TITLE, session.trackTitle)
                     .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, session.artist)
                     .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, session.maxSeekTime.toLong())
-                    .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, session.thumbnail?.let { base64ToBitmap(it) })
+                    .putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, artwork)
 
             val playbackState = PlaybackStateCompat.Builder()
                 .setState(
@@ -279,7 +294,7 @@ class RemotePlaybackFeature @Inject constructor(
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to create MediaSession", e)
-                return@launch
+                return@withContext
             }
 
             mediaSession.setCallback(mediaSessionCallback, Handler(context.mainLooper))
@@ -330,7 +345,7 @@ class RemotePlaybackFeature @Inject constructor(
                 setContentTitle(session.trackTitle)
                 setContentIntent(mainPendingIntent)
                 setContentText(session.artist)
-                setLargeIcon(session.thumbnail?.let { base64ToBitmap(it) })
+                setLargeIcon(artwork)
 
                 addAction(R.drawable.ic_skip_previous, "Previous", prevPendingIntent)
                 addAction(
@@ -358,11 +373,11 @@ class RemotePlaybackFeature @Inject constructor(
     }
 
     private fun clearDeviceData(deviceId: String) {
-        _activeSessionsByDevice.update { it - deviceId }
+        val removedSessions = _activeSessionsByDevice.getAndUpdate { it - deviceId }[deviceId].orEmpty()
         _audioDevicesByDevice.update { it - deviceId }
 
         // Remove position updates for sessions from this device
-        _activeSessionsByDevice.value[deviceId]?.forEach { session ->
+        removedSessions.forEach { session ->
             lastPositionUpdateTimeMap.remove(session.source)
         }
         
@@ -375,6 +390,8 @@ class RemotePlaybackFeature @Inject constructor(
     fun release() {
         closeMediaNotification()
         _activeSessionsByDevice.value = emptyMap()
+        lastPositionUpdateTimeMap.clear()
+        thumbnailCache.clear()
         notificationCenter.cancelNotification(AppNotifications.MEDIA_PLAYBACK_ID)
     }
 
@@ -409,6 +426,9 @@ class RemotePlaybackFeature @Inject constructor(
         private const val TAG = "MediaHandler"
         private const val MEDIA_SESSION_TAG = "DesktopMediaSession"
         private const val SPOTIFY_SOURCE = "spotify"
+        private const val THUMBNAIL_CACHE_ENTRIES = 4
+        private const val MAX_THUMBNAIL_ENCODED_LENGTH = 4 * 1024 * 1024
+        private const val MAX_THUMBNAIL_DIMENSION = 512
     }
 }
 

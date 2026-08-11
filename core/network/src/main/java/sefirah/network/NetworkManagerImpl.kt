@@ -20,35 +20,67 @@ class NetworkManagerImpl @Inject constructor(
     private val context: Context
 ) : NetworkManager {
     private val serviceIntent by lazy { Intent(context, NetworkService::class.java) }
-    private var networkService: NetworkService? = null
+    private val serviceBindingGate = ServiceBindingGate()
+    @Volatile private var networkService: NetworkService? = null
+    @Volatile private var serviceWanted = false
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            if (!serviceWanted) return
             networkService = (service as NetworkService.LocalBinder).getService()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             networkService = null
         }
+
+        override fun onBindingDied(name: ComponentName?) {
+            networkService = null
+            releaseBindingRegistration()
+            if (serviceWanted) startService()
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            networkService = null
+            releaseBindingRegistration()
+        }
     }
 
     override fun startService() {
+        serviceWanted = true
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(serviceIntent)
         } else {
             context.startService(serviceIntent)
         }
-        context.bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+        serviceBindingGate.bindOnce {
+            context.bindService(
+                serviceIntent,
+                serviceConnection,
+                Context.BIND_AUTO_CREATE,
+            ).also { didBind ->
+                if (!didBind) {
+                    Log.w(TAG, "Service binding was rejected")
+                }
+            }
+        }
     }
 
     override fun stopService() {
+        serviceWanted = false
         networkService = null
-        try {
-            context.unbindService(serviceConnection)
-        } catch (e: IllegalArgumentException) {
-            Log.w(TAG, "Service not bound when unbinding", e)
-        }
+        releaseBindingRegistration()
         context.stopService(serviceIntent)
+    }
+
+    private fun releaseBindingRegistration() {
+        serviceBindingGate.unbindOnce {
+            try {
+                context.unbindService(serviceConnection)
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "Service not bound when unbinding", e)
+            }
+        }
     }
 
     override suspend fun connectPaired(device: PairedDevice) {
@@ -69,6 +101,10 @@ class NetworkManagerImpl @Inject constructor(
 
     override fun sendMessage(deviceId: String, message: SocketMessage) {
         networkService?.sendMessage(deviceId, message)
+    }
+
+    override suspend fun sendMessageAwait(deviceId: String, message: SocketMessage): Boolean {
+        return networkService?.sendMessageAwait(deviceId, message) ?: false
     }
 
     override fun sendClipboardMessage(message: ClipboardInfo) {

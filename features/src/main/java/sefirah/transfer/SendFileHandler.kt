@@ -55,8 +55,10 @@ class SendFileHandler(
             notifications.showProgress(transferId = transferId, title = title)
 
             sslSocket = withContext(Dispatchers.IO) {
+                serverSocket.soTimeout = TRANSFER_ACCEPT_TIMEOUT_MS
                 serverSocket.accept() as? SSLSocket
             } ?: throw IOException("Failed to accept SSL connection")
+            sslSocket.soTimeout = TRANSFER_IO_TIMEOUT_MS
 
             val readChannel = sslSocket.inputStream.toByteReadChannel()
             val writeChannel = sslSocket.outputStream.asByteWriteChannel()
@@ -65,7 +67,9 @@ class SendFileHandler(
                 currentCoroutineContext().ensureActive()
 
                 withTimeout(5000.milliseconds) {
-                    if (readChannel.readUTF8Line() != TRANSFER_START_MESSAGE) throw IOException("Invalid transfer handshake")
+                    if (readChannel.readUTF8Line(MAX_TRANSFER_CONTROL_LINE_CHARS) != TRANSFER_START_MESSAGE) {
+                        throw IOException("Invalid transfer handshake")
+                    }
                 }
 
                 val metadata = filesMetadata[index]
@@ -118,7 +122,9 @@ class SendFileHandler(
                     }
                 }
 
-                val message = readChannel.readUTF8Line()
+                val message = withTimeout(5000.milliseconds) {
+                    readChannel.readUTF8Line(MAX_TRANSFER_CONTROL_LINE_CHARS)
+                }
                 if (message != TRANSFER_COMPLETE_MESSAGE) {
                     throw IOException("Invalid transfer confirmation: '$message'")
                 }
@@ -143,6 +149,9 @@ class SendFileHandler(
     companion object {
         private const val TAG = "SendFileHandler"
         private const val BUFFER_SIZE = 131072 * 4 // 512 KB
+        private const val TRANSFER_ACCEPT_TIMEOUT_MS = 15_000
+        private const val TRANSFER_IO_TIMEOUT_MS = 30_000
+        private const val MAX_TRANSFER_CONTROL_LINE_CHARS = 128
         const val TRANSFER_START_MESSAGE = "start"
         const val TRANSFER_COMPLETE_MESSAGE = "complete"
     }

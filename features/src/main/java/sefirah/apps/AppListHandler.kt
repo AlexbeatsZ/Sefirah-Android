@@ -4,9 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.BitmapDrawable
-import sefirah.common.util.bitmapToBase64
-import sefirah.common.util.drawableToBitmap
+import sefirah.common.util.drawableToBase64Compressed
 import sefirah.domain.interfaces.NetworkManager
 import sefirah.domain.model.ApplicationInfo
 import sefirah.domain.model.ApplicationList
@@ -18,14 +16,14 @@ class AppListHandler @Inject constructor(
     private val context: Context,
     private val networkManager: NetworkManager,
 ) {
-    fun handleRequest(deviceId: String) {
+    suspend fun handleRequest(deviceId: String) {
         val appList = getInstalledApps(context.packageManager)
-        networkManager.sendMessage(deviceId, ApplicationList(appList))
+        networkManager.sendMessageAwait(deviceId, ApplicationList(appList))
     }
 
-    fun sendInstalledApps(deviceId: String) {
+    suspend fun sendInstalledApps(deviceId: String) {
         getInstalledApps(context.packageManager).forEach { app ->
-            networkManager.sendMessage(deviceId, app)
+            if (!networkManager.sendMessageAwait(deviceId, app)) return
         }
     }
 
@@ -42,11 +40,7 @@ class AppListHandler @Inject constructor(
             val packageName = packageInfo.activityInfo.packageName
             val appIcon = try {
                 val appIconDrawable = packageInfo.loadIcon(packageManager)
-                if (appIconDrawable is BitmapDrawable) {
-                    bitmapToBase64(appIconDrawable.bitmap)
-                } else {
-                    bitmapToBase64(drawableToBitmap(appIconDrawable))
-                }
+                drawableToBase64Compressed(appIconDrawable, maxSize = APP_ICON_MAX_DIMENSION)
             } catch (e: Exception) {
                 null
             }
@@ -55,4 +49,7 @@ class AppListHandler @Inject constructor(
         return appsList.sortedBy { it.appName }
     }
 
+    private companion object {
+        const val APP_ICON_MAX_DIMENSION = 128
+    }
 }
