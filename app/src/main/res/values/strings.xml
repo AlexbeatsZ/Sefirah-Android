@@ -11,6 +11,9 @@
     <string name="bluetooth_connected_selected">Connected to selected device</string>
     <string name="bluetooth_connected_other">Connected to other devices</string>
     <string name="bluetooth_saved_disconnected">Saved but not connected</string>
+    <string name="bluetooth_connected">Connected</string>
+    <string name="bluetooth_disconnected">Not connected</string>
+    <string name="bluetooth_connected_device_name">%1$s (connected to %2$s)</string>
     <string name="bluetooth_no_devices">No devices</string>
     <string name="bluetooth_hide_section">Hide section</string>
     <string name="bluetooth_show_section">Show section</string>

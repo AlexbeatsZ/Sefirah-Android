@@ -11,6 +11,9 @@
     <string name="bluetooth_connected_selected">已连接到选定设备</string>
     <string name="bluetooth_connected_other">已连接到其他设备</string>
     <string name="bluetooth_saved_disconnected">已保存但未连接</string>
+    <string name="bluetooth_connected">已连接</string>
+    <string name="bluetooth_disconnected">未连接</string>
+    <string name="bluetooth_connected_device_name">%1$s（连接到 %2$s）</string>
     <string name="bluetooth_no_devices">没有设备</string>
     <string name="bluetooth_hide_section">收起此栏</string>
     <string name="bluetooth_show_section">展开此栏</string>

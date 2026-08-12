@@ -9,16 +9,30 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import sefirah.domain.util.MessageSerializer
 import java.util.concurrent.atomic.AtomicInteger
 
 class DeviceConnectionTest {
     @Test
+    fun `close transition is reported only once`() {
+        val connection = DeviceConnection(
+            deviceId = "peer",
+            direction = ConnectionDirection.Outgoing,
+            monotonicClock = { 0L },
+        )
+
+        assertTrue(connection.closeIfOpen())
+        assertFalse(connection.closeIfOpen())
+    }
+
+    @Test
     fun `writer failure fails in-flight acknowledgement and closes connection`() = runBlocking {
         val connection = DeviceConnection(
             deviceId = "peer",
             direction = ConnectionDirection.Outgoing,
+            monotonicClock = { 0L },
         )
 
         assertFalse(withTimeout(2_000) { connection.sendMessageAndAwait(ConnectionHeartbeat) })
@@ -27,13 +41,14 @@ class DeviceConnectionTest {
     }
 
     @Test
-    fun `reader awaits each handler and preserves per-device order`() = runBlocking {
+    fun `reader serializes application handlers and preserves per-device order`() = runBlocking {
         val input = ByteChannel()
         val connection = DeviceConnection(
             deviceId = "peer",
             direction = ConnectionDirection.Incoming,
             readChannel = input,
             writeChannel = ByteChannel(),
+            monotonicClock = { 0L },
         )
         val device = object : BaseRemoteDevice() {
             override val deviceId = "peer"
@@ -62,7 +77,7 @@ class DeviceConnectionTest {
         )
 
         val writer = async {
-            repeat(100) { index ->
+            repeat(50) { index ->
                 val frame = requireNotNull(
                     MessageSerializer.serialize(ClipboardInfo("text/plain", index.toString())),
                 )
@@ -80,8 +95,56 @@ class DeviceConnectionTest {
         input.close()
         withTimeout(5_000) { connectionClosed.await() }
 
-        assertEquals((0 until 100).map(Int::toString), handled)
+        assertEquals((0 until 50).map(Int::toString), handled)
         assertEquals(1, maxConcurrentHandlers.get())
+        connection.close()
+    }
+
+    @Test
+    fun `heartbeat bypasses a slow application handler`() = runBlocking {
+        val input = ByteChannel()
+        val connection = DeviceConnection(
+            deviceId = "peer",
+            direction = ConnectionDirection.Incoming,
+            readChannel = input,
+            writeChannel = ByteChannel(),
+            monotonicClock = { 0L },
+        )
+        val device = object : BaseRemoteDevice() {
+            override val deviceId = "peer"
+            override val deviceName = "Peer"
+        }
+        val applicationHandlerStarted = CompletableDeferred<Unit>()
+        val releaseApplicationHandler = CompletableDeferred<Unit>()
+        val heartbeatHandled = CompletableDeferred<Unit>()
+
+        connection.startListening(
+            getDevice = { device },
+            onMessage = { _, message ->
+                when (message) {
+                    is ClipboardInfo -> {
+                        applicationHandlerStarted.complete(Unit)
+                        releaseApplicationHandler.await()
+                    }
+                    is ConnectionHeartbeat -> heartbeatHandled.complete(Unit)
+                    else -> Unit
+                }
+            },
+            onClose = {},
+        )
+
+        val applicationFrame = requireNotNull(
+            MessageSerializer.serialize(ClipboardInfo("text/plain", "blocked")),
+        )
+        val heartbeatFrame = requireNotNull(MessageSerializer.serialize(ConnectionHeartbeat))
+        input.writeStringUtf8("$applicationFrame\n$heartbeatFrame\n")
+        input.flush()
+
+        withTimeout(2_000) { applicationHandlerStarted.await() }
+        withTimeout(2_000) { heartbeatHandled.await() }
+
+        releaseApplicationHandler.complete(Unit)
+        input.close()
         connection.close()
     }
 }

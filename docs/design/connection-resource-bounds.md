@@ -9,14 +9,17 @@ messages.
 - `NetworkManagerImpl` owns at most one Android binding registration for `NetworkService`.
   Repeated boot/activity starts may start the service again, but must not increment the binding
   reference count.
-- Each `DeviceConnection` owns exactly one reader and one writer. The reader awaits each handler,
-  preserving per-device order. Producers serialize under a per-connection gate before enqueueing;
-  the writer consumes a mailbox bounded to 64 frames and 8 MiB of serialized characters in total.
+- Each `DeviceConnection` owns exactly one reader and one writer. The reader decodes into a
+  bounded application-handler queue (64 frames and 8 MiB) that preserves per-device order.
+  Heartbeats bypass that potentially slow queue and are the only concurrently dispatched frame.
+  Producers serialize under a per-connection gate before enqueueing.
+- The writer has a regular mailbox bounded to 64 frames and 8 MiB plus a reserved control lane
+  bounded to eight frames and 64 KiB. Heartbeat and disconnect traffic use the control lane.
 - Ordinary event producers use non-blocking enqueue. Mailbox overflow marks the connection
   unhealthy and closes it; silently dropping control messages would corrupt protocol state.
-- Bulk snapshots and an explicit `Disconnect` use the acknowledged send path. They wait with a
-  bounded timeout so producers receive backpressure and `Disconnect` reaches the peer before EOF
-  when the socket remains healthy.
+- Bulk snapshots use the acknowledged regular path. An explicit `Disconnect` uses the acknowledged
+  control path. Both wait with a bounded timeout so producers receive backpressure and
+  `Disconnect` reaches the peer before EOF when the socket remains healthy.
 - The first write failure closes the socket and fails queued acknowledgements. Never create one
   coroutine per queued frame or retry every stale frame after a broken pipe.
 - Service teardown rejects new connections and closes every accepted connection, including peers
@@ -24,6 +27,11 @@ messages.
 - `NetworkService` promotes itself to a connected-device foreground service once during creation.
   Connection-state changes update the existing notification and must not call `startForeground()`
   again, because HyperOS may reject background re-promotion and leave the service non-foreground.
+- The service requests a partial wake lock while running and releases it during teardown. Liveness
+  deadlines use `SystemClock.uptimeMillis()` so deep sleep itself does not age a connection.
+  HyperOS may still disable an app wake lock while the screen is off; foreground service and
+  `START_STICKY` do not override that OEM policy. The supported recovery path is automatic
+  reconnect after the process can run again.
 
 ## Input and allocation limits
 
@@ -56,6 +64,7 @@ messages.
   idempotent service binding, bitmap sizing, thumbnail caching, and clipboard privacy boundaries.
 - Run `gradlew test :app:assembleDebug` before deployment.
 - Deploy to valued devices only with `adb install -r`. Verify one service binding, one privileged
-  process, foreground-service state, preserved pairing data, and no repeated broken-pipe storm.
+  process when Shizuku is available, foreground-service state, preserved pairing data,
+  bidirectional heartbeat after wake, and no repeated broken-pipe storm.
 - Long-run acceptance requires dual-peer reconnect pressure plus repeated PSS, Java/native heap,
   Bitmap, thread, and file-descriptor samples. A single low-memory snapshot is not leak proof.

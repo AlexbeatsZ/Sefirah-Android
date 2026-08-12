@@ -1,5 +1,6 @@
 package sefirah.domain.model
 
+import android.os.SystemClock
 import android.util.Log
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.ByteWriteChannel
@@ -11,11 +12,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import sefirah.domain.util.MessageSerializer
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import javax.net.ssl.SSLSocket
 
 class DeviceConnection(
@@ -23,15 +26,17 @@ class DeviceConnection(
     val direction: ConnectionDirection,
     var sslSocket: SSLSocket? = null,
     var readChannel: ByteReadChannel? = null,
-    var writeChannel: ByteWriteChannel? = null
+    var writeChannel: ByteWriteChannel? = null,
+    private val monotonicClock: () -> Long = SystemClock::uptimeMillis,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val outgoingMessages = OutgoingMessageMailbox()
     private val closed = AtomicBoolean(false)
     private val submissionLock = Any()
     private var listeningJob: Job? = null
+    private var messageHandlerJob: Job? = null
     private val writerJob = scope.launch { writeMessages() }
-    @Volatile var lastReceivedAt: Long = System.currentTimeMillis()
+    @Volatile var lastReceivedAt: Long = monotonicClock()
         private set
 
     /** Returns false when the bounded mailbox is full or the connection is already closed. */
@@ -41,14 +46,29 @@ class DeviceConnection(
         outgoingMessages.trySend(frame)
     }
 
-    /** Queues a frame with backpressure and waits until the single writer flushes it. */
+    /** Queues liveness/control traffic ahead of regular application frames. */
+    fun sendControlMessage(message: SocketMessage): Boolean = synchronized(submissionLock) {
+        if (closed.get()) return@synchronized false
+        val frame = serializeFrame(message) ?: return@synchronized false
+        outgoingMessages.trySendControl(frame)
+    }
+
+    /** Waits for bounded mailbox space and for the single writer to flush the frame. */
     suspend fun sendMessageAndAwait(message: SocketMessage): Boolean {
-        val delivery = synchronized(submissionLock) {
+        val frame = synchronized(submissionLock) {
             if (closed.get()) return@synchronized null
-            val frame = serializeFrame(message) ?: return@synchronized null
-            outgoingMessages.trySendAcknowledged(frame)
+            serializeFrame(message)
         } ?: return false
-        return delivery.await()
+        return outgoingMessages.sendAndAwait(frame)
+    }
+
+    /** Flushes a control frame using the mailbox's reserved high-priority lane. */
+    suspend fun sendControlMessageAndAwait(message: SocketMessage): Boolean {
+        val frame = synchronized(submissionLock) {
+            if (closed.get()) return@synchronized null
+            serializeFrame(message)
+        } ?: return false
+        return outgoingMessages.sendControlAndAwait(frame)
     }
 
     /**
@@ -65,8 +85,21 @@ class DeviceConnection(
     ) {
         // Stop existing listener if any
         listeningJob?.cancel()
+        messageHandlerJob?.cancel()
 
         val channel = readChannel ?: return
+        val queuedMessageChars = AtomicLong(0)
+        val messageQueue = Channel<IncomingMessage>(ProtocolLimits.INCOMING_MESSAGE_CAPACITY)
+
+        messageHandlerJob = scope.launch {
+            for (incoming in messageQueue) {
+                try {
+                    onMessage(incoming.device, incoming.message)
+                } finally {
+                    queuedMessageChars.addAndGet(-incoming.frameChars.toLong())
+                }
+            }
+        }
 
         listeningJob = scope.launch {
             try {
@@ -74,10 +107,24 @@ class DeviceConnection(
                     try {
                         val line = channel.readUTF8Line(ProtocolLimits.MESSAGE_FRAME_MAX_CHARS)
                             ?: break
-                        lastReceivedAt = System.currentTimeMillis()
+                        lastReceivedAt = monotonicClock()
                         MessageSerializer.deserialize(line)?.let { socketMessage ->
                             val device = getDevice(deviceId) ?: return@let
-                            onMessage(device, socketMessage)
+                            if (socketMessage is ConnectionHeartbeat) {
+                                // Liveness must not wait behind a slow Bluetooth, media, or database
+                                // handler. It is deliberately the only concurrently dispatched frame.
+                                onMessage(device, socketMessage)
+                            } else {
+                                val reserved = reserveIncomingChars(queuedMessageChars, line.length)
+                                if (!reserved || !messageQueue.trySend(
+                                        IncomingMessage(device, socketMessage, line.length),
+                                    ).isSuccess
+                                ) {
+                                    if (reserved) queuedMessageChars.addAndGet(-line.length.toLong())
+                                    Log.w(TAG, "Inbound message queue is full for $deviceId; closing connection")
+                                    return@launch
+                                }
+                            }
                         }
                     } catch (e: CancellationException) {
                         throw e
@@ -91,6 +138,7 @@ class DeviceConnection(
             } catch (e: Exception) {
                 Log.e(TAG, "Session error for $deviceId", e)
             } finally {
+                messageQueue.close()
                 onClose(this@DeviceConnection)
             }
         }
@@ -100,11 +148,18 @@ class DeviceConnection(
      * Closes all connection resources and stops listening.
      */
     fun close() {
-        if (!closed.compareAndSet(false, true)) return
+        closeIfOpen()
+    }
+
+    /** Closes once and reports whether this call performed the transition. */
+    fun closeIfOpen(): Boolean {
+        if (!closed.compareAndSet(false, true)) return false
 
         outgoingMessages.closeAndFailPending()
         listeningJob?.cancel()
         listeningJob = null
+        messageHandlerJob?.cancel()
+        messageHandlerJob = null
         try {
             sslSocket?.close()
             readChannel?.cancel(kotlinx.io.IOException())
@@ -116,12 +171,14 @@ class DeviceConnection(
         sslSocket = null
         readChannel = null
         writeChannel = null
+        return true
     }
 
     private suspend fun writeMessages() {
         var inFlight: OutgoingMessage? = null
         try {
-            for (outgoing in outgoingMessages.messages) {
+            while (true) {
+                val outgoing = outgoingMessages.receive() ?: break
                 inFlight = outgoing
                 val channel = writeChannel ?: run {
                     throw IOException("Write channel is unavailable")
@@ -150,6 +207,22 @@ class DeviceConnection(
         if (serialized.length > ProtocolLimits.MESSAGE_FRAME_MAX_CHARS) return null
         return serialized
     }
+
+    private fun reserveIncomingChars(queuedChars: AtomicLong, frameChars: Int): Boolean {
+        while (true) {
+            val current = queuedChars.get()
+            if (frameChars.toLong() > ProtocolLimits.INCOMING_MESSAGE_MAX_QUEUED_CHARS - current) {
+                return false
+            }
+            if (queuedChars.compareAndSet(current, current + frameChars)) return true
+        }
+    }
+
+    private data class IncomingMessage(
+        val device: BaseRemoteDevice,
+        val message: SocketMessage,
+        val frameChars: Int,
+    )
 
     private companion object {
         const val TAG = "DeviceConnection"

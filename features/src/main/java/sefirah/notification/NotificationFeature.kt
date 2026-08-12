@@ -323,8 +323,8 @@ class NotificationFeature @Inject constructor(
 
             try {
                 Log.d("NotificationFeature", "${notificationInfo.appName} ${notificationInfo.title} ${notificationInfo.text}")
-                targetDeviceIds.forEach { deviceId ->
-                    networkManager.sendMessage(deviceId, notificationInfo)
+                for (deviceId in targetDeviceIds) {
+                    networkManager.sendMessageAwait(deviceId, notificationInfo)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send notification message", e)

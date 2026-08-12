@@ -47,6 +47,7 @@
 ## Design References
 
 - [`docs/design/connection-resource-bounds.md`](docs/design/connection-resource-bounds.md): connection backpressure, frame/handshake/allocation ceilings, clipboard privacy, and privileged-service lifecycle. Read it before changing network queues, image snapshots, clipboard polling, service binding, or Shizuku teardown.
+- [`docs/design/bluetooth-handoff-ui.md`](docs/design/bluetooth-handoff-ui.md): Bluetooth catalog grouping, labels, endpoint choices, legacy compatibility, and action semantics. Read it before changing the handoff card or its UI policy.
 
 ## Active Work
 

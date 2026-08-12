@@ -19,10 +19,10 @@ class OutgoingMessageMailboxTest {
         assertTrue(mailbox.trySend(first))
         assertTrue(mailbox.trySend(second))
         assertFalse(mailbox.trySend(overflow))
-        val firstOutgoing = mailbox.messages.receive()
+        val firstOutgoing = mailbox.receive()!!
         assertEquals(first, firstOutgoing.frame)
         firstOutgoing.complete(true)
-        val secondOutgoing = mailbox.messages.receive()
+        val secondOutgoing = mailbox.receive()!!
         assertEquals(second, secondOutgoing.frame)
         secondOutgoing.complete(true)
     }
@@ -34,10 +34,29 @@ class OutgoingMessageMailboxTest {
         val delivered = async { mailbox.sendAndAwait(message) }
 
         yield()
-        val outgoing = mailbox.messages.receive()
+        val outgoing = mailbox.receive()!!
         assertEquals(message, outgoing.frame)
         outgoing.complete(true)
 
+        assertTrue(delivered.await())
+    }
+
+    @Test
+    fun `waiting sender applies backpressure until mailbox space is released`() = runBlocking {
+        val mailbox = OutgoingMessageMailbox(capacity = 1, maxQueuedChars = 32)
+        assertTrue(mailbox.trySend("first"))
+
+        val delivered = async { mailbox.sendAndAwait("second") }
+        yield()
+        assertFalse(delivered.isCompleted)
+
+        val first = mailbox.receive()!!
+        assertEquals("first", first.frame)
+        first.complete(true)
+
+        val second = mailbox.receive()!!
+        assertEquals("second", second.frame)
+        second.complete(true)
         assertTrue(delivered.await())
     }
 
@@ -62,7 +81,39 @@ class OutgoingMessageMailboxTest {
         assertTrue(mailbox.trySend("123456"))
         assertFalse(mailbox.trySend("78901"))
 
-        mailbox.messages.receive().complete(true)
+        mailbox.receive()!!.complete(true)
         assertTrue(mailbox.trySend("78901"))
+    }
+
+    @Test
+    fun `control frame overtakes queued application traffic`() = runBlocking {
+        val mailbox = OutgoingMessageMailbox(capacity = 2, maxQueuedChars = 32)
+        assertTrue(mailbox.trySend("active"))
+        val active = mailbox.receive()!!
+        assertTrue(mailbox.trySend("queued"))
+        assertTrue(mailbox.trySendControl("heartbeat"))
+
+        active.complete(true)
+        val control = mailbox.receive()!!
+        assertEquals("heartbeat", control.frame)
+        control.complete(true)
+        val application = mailbox.receive()!!
+        assertEquals("queued", application.frame)
+        application.complete(true)
+    }
+
+    @Test
+    fun `control lane remains available when application character budget is full`() = runBlocking {
+        val mailbox = OutgoingMessageMailbox(
+            capacity = 1,
+            maxQueuedChars = 4,
+            controlCapacity = 1,
+            maxControlQueuedChars = 16,
+        )
+        assertTrue(mailbox.trySend("full"))
+        assertTrue(mailbox.trySendControl("heartbeat"))
+
+        assertEquals("heartbeat", mailbox.receive()!!.frame)
+        assertEquals("full", mailbox.receive()!!.frame)
     }
 }

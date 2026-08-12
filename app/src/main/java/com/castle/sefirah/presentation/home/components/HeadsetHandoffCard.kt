@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -53,12 +52,6 @@ import sefirah.domain.model.BluetoothHandoffConfiguration
 import sefirah.domain.model.BluetoothHandoffState
 import sefirah.domain.model.BluetoothHeadsetDescriptor
 
-private enum class BluetoothDeviceSection {
-    SelectedConnected,
-    OtherConnected,
-    SavedDisconnected,
-}
-
 private data class OtherDeviceSelectionRequest(
     val headsetId: String,
     val headsetName: String,
@@ -80,17 +73,7 @@ fun HeadsetHandoffCard(
     val endpointsById = configuration.endpoints.associateBy { it.id }
     var headsetsOnly by rememberSaveable { mutableStateOf(false) }
     var showFilterMenu by remember { mutableStateOf(false) }
-    val visibleHeadsets = configuration.headsets.filter {
-        it.isVisible && (!headsetsOnly || it.isHeadset)
-    }
-    val selectedConnected = visibleHeadsets.filter { it.activeEndpointId == selectedEndpointId }
-    val otherConnected = visibleHeadsets.filter {
-        it.activeEndpointId != null && it.activeEndpointId != selectedEndpointId
-    }
-    val savedDisconnected = visibleHeadsets.filter {
-        it.activeEndpointId == null && selectedEndpointId != null &&
-            (it.endpointIds.isEmpty() || selectedEndpointId in it.endpointIds)
-    }
+    val headsetSections = groupBluetoothHeadsets(configuration.headsets, headsetsOnly)
     var expandedHeadsetId by rememberSaveable { mutableStateOf<String?>(null) }
     var showVisibilityDialog by rememberSaveable { mutableStateOf(false) }
     var otherDeviceRequest by remember { mutableStateOf<OtherDeviceSelectionRequest?>(null) }
@@ -175,11 +158,9 @@ fun HeadsetHandoffCard(
             }
 
             BluetoothSection(
-                title = stringResource(R.string.bluetooth_connected_selected),
-                headsets = selectedConnected,
-                section = BluetoothDeviceSection.SelectedConnected,
+                title = stringResource(R.string.bluetooth_connected),
+                headsets = headsetSections.connected,
                 endpoints = configuration.endpoints,
-                selectedEndpointId = selectedEndpointId,
                 localEndpointId = localEndpointId,
                 expandedHeadsetId = expandedHeadsetId,
                 busy = busy,
@@ -198,11 +179,9 @@ fun HeadsetHandoffCard(
             HorizontalDivider()
 
             BluetoothSection(
-                title = stringResource(R.string.bluetooth_connected_other),
-                headsets = otherConnected,
-                section = BluetoothDeviceSection.OtherConnected,
+                title = stringResource(R.string.bluetooth_disconnected),
+                headsets = headsetSections.disconnected,
                 endpoints = configuration.endpoints,
-                selectedEndpointId = selectedEndpointId,
                 localEndpointId = localEndpointId,
                 expandedHeadsetId = expandedHeadsetId,
                 busy = busy,
@@ -216,23 +195,6 @@ fun HeadsetHandoffCard(
                         targets,
                     )
                 },
-            )
-
-            HorizontalDivider()
-
-            BluetoothSection(
-                title = stringResource(R.string.bluetooth_saved_disconnected),
-                headsets = savedDisconnected,
-                section = BluetoothDeviceSection.SavedDisconnected,
-                endpoints = configuration.endpoints,
-                selectedEndpointId = selectedEndpointId,
-                localEndpointId = localEndpointId,
-                expandedHeadsetId = expandedHeadsetId,
-                busy = busy,
-                onExpanded = { expandedHeadsetId = if (expandedHeadsetId == it) null else it },
-                onDisconnect = onDisconnect,
-                onSwitch = onSwitch,
-                onSelectOther = { _, _ -> },
             )
 
             val statusText = when (state?.status) {
@@ -296,9 +258,7 @@ fun HeadsetHandoffCard(
 private fun BluetoothSection(
     title: String,
     headsets: List<BluetoothHeadsetDescriptor>,
-    section: BluetoothDeviceSection,
     endpoints: List<BluetoothEndpointDescriptor>,
-    selectedEndpointId: String?,
     localEndpointId: String,
     expandedHeadsetId: String?,
     busy: Boolean,
@@ -307,6 +267,7 @@ private fun BluetoothSection(
     onSwitch: (headsetId: String, endpointId: String) -> Unit,
     onSelectOther: (BluetoothHeadsetDescriptor, List<DeviceSelectionOption>) -> Unit,
 ) {
+    val endpointsById = endpoints.associateBy { it.id }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             title,
@@ -322,14 +283,9 @@ private fun BluetoothSection(
             )
         }
         headsets.forEach { headset ->
-            val sourceEndpointId = headset.activeEndpointId ?: selectedEndpointId ?: return@forEach
+            val sourceEndpointId = headset.activeEndpointId
             val supportsLocal = headset.supportsEndpoint(localEndpointId)
-            val supportsSelected = headset.supportsEndpoint(selectedEndpointId)
-            val otherEndpoints = endpoints.filter { endpoint ->
-                endpoint.id != sourceEndpointId &&
-                    endpoint.id != localEndpointId &&
-                    endpoint.id != selectedEndpointId
-            }
+            val otherEndpoints = headset.otherTargetEndpoints(endpoints, localEndpointId)
             val unavailableReason = stringResource(R.string.bluetooth_target_unavailable)
             val otherOptions = otherEndpoints.map { endpoint ->
                 val supported = headset.supportsEndpoint(endpoint.id)
@@ -348,8 +304,15 @@ private fun BluetoothSection(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    val displayName = sourceEndpointId?.let { endpointId ->
+                        stringResource(
+                            R.string.bluetooth_connected_device_name,
+                            headset.displayName,
+                            endpointsById[endpointId]?.displayName ?: endpointId,
+                        )
+                    } ?: headset.displayName
                     Text(
-                        headset.displayName,
+                        displayName,
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -363,80 +326,34 @@ private fun BluetoothSection(
                     )
                 }
                 AnimatedVisibility(expandedHeadsetId == headset.id) {
-                    val actionCount = when (section) {
-                        BluetoothDeviceSection.SelectedConnected -> 3
-                        BluetoothDeviceSection.OtherConnected -> 4
-                        BluetoothDeviceSection.SavedDisconnected -> 1
-                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        when (section) {
-                            BluetoothDeviceSection.SelectedConnected -> {
-                                CompactActionButton(
-                                    label = stringResource(R.string.bluetooth_switch_to_this_device),
-                                    enabled = !busy && sourceEndpointId != localEndpointId && supportsLocal,
-                                    onClick = { onSwitch(headset.id, localEndpointId) },
-                                )
-                                CompactActionButton(
-                                    label = stringResource(R.string.bluetooth_switch_to_other_device),
-                                    enabled = !busy && otherOptions.isNotEmpty(),
-                                    onClick = { onSelectOther(headset, otherOptions) },
-                                )
-                                CompactActionButton(
-                                    label = stringResource(R.string.disconnect),
-                                    enabled = !busy,
-                                    outlined = true,
-                                    onClick = { onDisconnect(headset.id, sourceEndpointId) },
-                                )
-                            }
-
-                            BluetoothDeviceSection.OtherConnected -> {
-                                CompactActionButton(
-                                    label = stringResource(R.string.bluetooth_switch_to_this_device),
-                                    enabled = !busy && sourceEndpointId != localEndpointId && supportsLocal,
-                                    onClick = { onSwitch(headset.id, localEndpointId) },
-                                )
-                                CompactActionButton(
-                                    label = stringResource(R.string.bluetooth_switch_to_selected_device),
-                                    enabled = !busy && selectedEndpointId != null &&
-                                        sourceEndpointId != selectedEndpointId && supportsSelected,
-                                    onClick = { selectedEndpointId?.let { onSwitch(headset.id, it) } },
-                                )
-                                CompactActionButton(
-                                    label = stringResource(R.string.bluetooth_switch_to_other_device),
-                                    enabled = !busy && otherOptions.isNotEmpty(),
-                                    onClick = { onSelectOther(headset, otherOptions) },
-                                )
-                                CompactActionButton(
-                                    label = stringResource(R.string.disconnect),
-                                    enabled = !busy,
-                                    outlined = true,
-                                    onClick = { onDisconnect(headset.id, sourceEndpointId) },
-                                )
-                            }
-
-                            BluetoothDeviceSection.SavedDisconnected -> {
-                                CompactActionButton(
-                                    label = stringResource(R.string.bluetooth_connect_to_selected_device),
-                                    enabled = !busy && selectedEndpointId != null && supportsSelected,
-                                    onClick = { selectedEndpointId?.let { onSwitch(headset.id, it) } },
-                                )
-                            }
-                        }
-                        repeat(4 - actionCount) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                        CompactActionButton(
+                            label = stringResource(R.string.bluetooth_switch_to_this_device),
+                            enabled = !busy && sourceEndpointId != localEndpointId && supportsLocal,
+                            onClick = { onSwitch(headset.id, localEndpointId) },
+                        )
+                        CompactActionButton(
+                            label = stringResource(R.string.bluetooth_switch_to_other_device),
+                            enabled = !busy && otherOptions.any { it.isEnabled },
+                            onClick = { onSelectOther(headset, otherOptions) },
+                        )
+                        CompactActionButton(
+                            label = stringResource(R.string.disconnect),
+                            enabled = !busy && sourceEndpointId != null,
+                            outlined = true,
+                            onClick = {
+                                sourceEndpointId?.let { onDisconnect(headset.id, it) }
+                            },
+                        )
                     }
                 }
             }
         }
     }
 }
-
-private fun BluetoothHeadsetDescriptor.supportsEndpoint(endpointId: String?): Boolean =
-    endpointId != null && (endpointIds.isEmpty() || endpointId in endpointIds)
 
 @Composable
 private fun RowScope.CompactActionButton(

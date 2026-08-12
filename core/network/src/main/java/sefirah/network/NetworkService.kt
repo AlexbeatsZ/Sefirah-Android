@@ -12,6 +12,8 @@ import android.net.wifi.WifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import dagger.hilt.android.AndroidEntryPoint
@@ -29,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -172,6 +175,7 @@ class NetworkService : Service() {
     private val pendingHandshakeSlots = Semaphore(MAX_PENDING_HANDSHAKES)
     private val pendingHandshakeSockets = ConcurrentHashMap.newKeySet<SSLSocket>()
     private var wifiLock: WifiManager.WifiLock? = null
+    private var wakeLock: PowerManager.WakeLock? = null
     @Volatile private var foregroundStarted = false
     private val wallpaperCacheLock = Any()
     @Volatile private var cachedWallpaperLoaded = false
@@ -270,6 +274,7 @@ class NetworkService : Service() {
         return START_STICKY
     }
 
+    @SuppressLint("WakelockTimeout")
     override fun onCreate() {
         super.onCreate()
 
@@ -283,6 +288,12 @@ class NetworkService : Service() {
             setReferenceCounted(false)
             acquire()
         }
+        wakeLock = getSystemService(PowerManager::class.java)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:network")
+            .apply {
+                setReferenceCounted(false)
+                acquire()
+            }
 
         setNotification(null, null, AppNotifications.DEVICE_CONNECTION_ID)
 
@@ -314,7 +325,7 @@ class NetworkService : Service() {
         scope.launch {
             while (isActive) {
                 delay(HEARTBEAT_INTERVAL_MS)
-                val now = System.currentTimeMillis()
+                val now = SystemClock.uptimeMillis()
                 connections.values.toList().forEach { connection ->
                     val device = deviceManager.getPairedDevice(connection.deviceId) ?: return@forEach
                     if (ProtocolCapabilities.CONNECTION_HEARTBEAT_V1 !in device.capabilities) return@forEach
@@ -324,7 +335,9 @@ class NetworkService : Service() {
                         connection.close()
                     } else {
                         Log.d(TAG, "Sending heartbeat to ${connection.deviceId}")
-                        connection.sendMessage(ConnectionHeartbeat)
+                        if (!connection.sendControlMessage(ConnectionHeartbeat) && connection.closeIfOpen()) {
+                            Log.w(TAG, "Closing connection to ${connection.deviceId}: heartbeat control lane is full")
+                        }
                     }
                 }
             }
@@ -589,6 +602,8 @@ class NetworkService : Service() {
             Log.d(TAG, "Device ${updatedDevice.deviceId} connected")
             sendMessage(device.deviceId, ConnectionAck)
             finalizeConnection(updatedDevice, false)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error during connection", e)
             scheduleReconnectAfterFailure(device.deviceId)
@@ -996,8 +1011,12 @@ class NetworkService : Service() {
             return
         }
         if (!connection.sendMessage(message)) {
-            Log.w(TAG, "Closing overloaded connection to $deviceId")
-            connection.close()
+            if (connection.closeIfOpen()) {
+                Log.w(
+                    TAG,
+                    "Closing overloaded connection to $deviceId while queuing ${message::class.simpleName}",
+                )
+            }
         }
     }
 
@@ -1039,8 +1058,9 @@ class NetworkService : Service() {
             connection.sendMessageAndAwait(message)
         } == true
         if (!delivered) {
-            Log.w(TAG, "Timed out writing to $deviceId; closing connection")
-            connection.close()
+            if (connection.closeIfOpen()) {
+                Log.w(TAG, "Timed out writing to $deviceId; closing connection")
+            }
         }
         return delivered
     }
@@ -1048,7 +1068,7 @@ class NetworkService : Service() {
     private suspend fun flushDisconnect(deviceId: String) {
         val connection = connections[deviceId] ?: return
         val delivered = withTimeoutOrNull(DISCONNECT_FLUSH_TIMEOUT_MS) {
-            connection.sendMessageAndAwait(Disconnect)
+            connection.sendControlMessageAndAwait(Disconnect)
         } == true
         if (!delivered) Log.w(TAG, "Disconnect frame to $deviceId did not flush before close")
     }
@@ -1077,7 +1097,7 @@ class NetworkService : Service() {
                     connectionSnapshot
                         .filter { (deviceId, _) -> deviceId in pairedIds }
                         .map { (_, connection) ->
-                            async { runCatching { connection.sendMessageAndAwait(Disconnect) } }
+                            async { runCatching { connection.sendControlMessageAndAwait(Disconnect) } }
                         }
                         .awaitAll()
                 }
@@ -1102,6 +1122,8 @@ class NetworkService : Service() {
         unregisterReceiver(wallpaperChangedReceiver)
         wifiLock?.let { lock -> if (lock.isHeld) lock.release() }
         wifiLock = null
+        wakeLock?.let { lock -> if (lock.isHeld) lock.release() }
+        wakeLock = null
         deviceControlHandler.stop()
         networkDiscovery.shutdown()
         privilegedBridgeManager.stop()
