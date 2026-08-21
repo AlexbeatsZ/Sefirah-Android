@@ -60,7 +60,7 @@
 
 ## Current State
 
-The feature branch contains the Shizuku clipboard/Bluetooth bridge, Bluetooth catalog and handoff UI, bounded privileged-call recovery, localization, and remote-storage groundwork. Installed APK versions, device connectivity, Shizuku process state, and hardware state are volatile; inspect them before deployment or physical testing. Keep completed evidence in Git history and tests rather than chronological task boards.
+The feature branch contains the Shizuku clipboard/Bluetooth bridge, Bluetooth catalog and handoff UI, bounded privileged-call recovery, localization, and remote-storage groundwork. It carries selected upstream v3.0.1 transfer/contact fixes while retaining the fork's bounded transfer ownership and capability-gated mixed-version protocol. Installed APK versions, device connectivity, Shizuku process state, and hardware state are volatile; inspect them before deployment or physical testing. Keep completed evidence in Git history and tests rather than chronological task boards.
 
 ## Durable Lessons
 
@@ -69,3 +69,6 @@ The feature branch contains the Shizuku clipboard/Bluetooth bridge, Bluetooth ca
 - Reusing the same `ServiceConnection` does not make repeated `bindService` calls idempotent; each successful bind adds a reference that must be balanced or it can keep `NetworkService` alive after Stop.
 - Promote `NetworkService` to foreground once during creation. On HyperOS, calling `startForeground()` again from background connection-state updates can be rejected and leave the service non-foreground; update the existing notification with `notify()` instead.
 - OOM crash stacks often identify the allocation victim, not the retained owner. Correlate heap/Bitmap/thread samples with reconnect and queue logs before blaming SSHD or the platform.
+- File-transfer progress notifications must be owned by the individual transfer, throttled by
+  monotonic time, and cancelled from that transfer's lifecycle so one cancellation cannot leave
+  stale notifications or disturb another device's transfer.
