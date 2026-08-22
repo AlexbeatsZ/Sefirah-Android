@@ -11,6 +11,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import rikka.shizuku.Shizuku
 import java.util.concurrent.Callable
@@ -39,6 +41,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
     @Volatile
     private var started = false
     private var lastBindAttemptAt = 0L
+    private val readinessMutex = Mutex()
     private val bridgeCallExecutor = Executors.newFixedThreadPool(2) { runnable ->
         Thread(runnable, "Sefirah-PrivilegedBridgeCall").apply { isDaemon = true }
     }
@@ -159,20 +162,29 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         callBluetoothBridge("catalog") { it.getBluetoothCatalog() }
     }
 
-    suspend fun ensureReady(timeoutMillis: Long = BIND_TIMEOUT_MS): Boolean = withContext(Dispatchers.IO) {
-        start()
-        val deadline = System.currentTimeMillis() + timeoutMillis
-        while (System.currentTimeMillis() < deadline) {
-            if (bridge?.asBinder()?.pingBinder() == true) {
-                _status.value = PrivilegedBridgeStatus.Ready
-                return@withContext true
+    suspend fun ensureReady(timeoutMillis: Long = BIND_TIMEOUT_MS): Boolean =
+        withContext(Dispatchers.IO) {
+            readinessMutex.withLock {
+                start()
+                if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
+                    bridge = null
+                    _status.value = PrivilegedBridgeStatus.Unavailable
+                    return@withLock false
+                }
+
+                val deadline = System.currentTimeMillis() + timeoutMillis
+                while (System.currentTimeMillis() < deadline) {
+                    if (bridge?.asBinder()?.pingBinder() == true) {
+                        _status.value = PrivilegedBridgeStatus.Ready
+                        return@withLock true
+                    }
+                    refreshAndBind()
+                    delay(BIND_RETRY_INTERVAL_MS)
+                }
+                Log.w(TAG, "Privileged bridge did not become ready within ${timeoutMillis}ms; status=${_status.value}")
+                false
             }
-            refreshAndBind()
-            delay(BIND_RETRY_INTERVAL_MS)
         }
-        Log.w(TAG, "Privileged bridge did not become ready within ${timeoutMillis}ms; status=${_status.value}")
-        false
-    }
 
     suspend fun executeBluetoothCommand(action: String, deviceKey: String?, enabled: Boolean): String? =
         withContext(Dispatchers.IO) {

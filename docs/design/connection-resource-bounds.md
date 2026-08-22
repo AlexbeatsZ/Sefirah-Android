@@ -56,6 +56,10 @@ messages.
 - Binder death attempts to destroy the detached UserService before rebinding. Explicit
   `NetworkService` teardown removes the UserService and stops privileged SFTP, while the manager
   remains restartable in the same app process.
+- Bluetooth catalog and command requests share one readiness attempt. If the Shizuku binder is
+  absent, fail immediately with `privileged_bridge_unavailable`; do not stack six-second binding
+  loops for every periodic catalog refresh. The sticky binder listener performs the next bind when
+  Shizuku becomes available again.
 - Do not add arbitrary commands, arbitrary Binder transactions, or a generic shell/path API.
 
 ## Verification

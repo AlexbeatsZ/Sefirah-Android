@@ -60,7 +60,7 @@
 
 ## Current State
 
-The feature branch contains the Shizuku clipboard/Bluetooth bridge, Bluetooth catalog and handoff UI, bounded privileged-call recovery, localization, and remote-storage groundwork. It carries selected upstream v3.0.1 transfer/contact fixes while retaining the fork's bounded transfer ownership and capability-gated mixed-version protocol. Installed APK versions, device connectivity, Shizuku process state, and hardware state are volatile; inspect them before deployment or physical testing. Keep completed evidence in Git history and tests rather than chronological task boards.
+The feature branch contains the Shizuku clipboard/Bluetooth bridge, Bluetooth catalog and handoff UI, bounded privileged-call recovery, localization, and remote-storage groundwork. Privileged readiness is single-flight, and Bluetooth requests fail promptly with `privileged_bridge_unavailable` when the Shizuku binder is absent instead of starting overlapping retry loops. It carries selected upstream v3.0.1 transfer/contact fixes while retaining the fork's bounded transfer ownership and capability-gated mixed-version protocol. Installed APK versions, device connectivity, Shizuku process state, and hardware state are volatile; inspect them before deployment or physical testing. Keep completed evidence in Git history and tests rather than chronological task boards.
 
 ## Durable Lessons
 
@@ -72,3 +72,6 @@ The feature branch contains the Shizuku clipboard/Bluetooth bridge, Bluetooth ca
 - File-transfer progress notifications must be owned by the individual transfer, throttled by
   monotonic time, and cancelled from that transfer's lifecycle so one cancellation cannot leave
   stale notifications or disturb another device's transfer.
+- A missing Shizuku binder is a dependency failure, not a reason for every concurrent catalog
+  refresh to run its own bind timeout. Check binder liveness first, coalesce readiness work, and
+  return a stable capability error that the coordinator can keep visible and non-actionable.

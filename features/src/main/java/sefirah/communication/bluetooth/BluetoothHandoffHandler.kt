@@ -17,39 +17,49 @@ class BluetoothHandoffHandler @Inject constructor(
     private val privilegedBridgeManager: PrivilegedBridgeManager,
 ) {
     suspend fun handleCatalogRequest(sourceDeviceId: String, request: BluetoothDeviceCatalogRequest) {
-        privilegedBridgeManager.ensureReady()
+        if (!privilegedBridgeManager.ensureReady()) {
+            networkManager.sendMessage(sourceDeviceId, unavailableCatalog(request.requestId))
+            return
+        }
         val rawCatalog = privilegedBridgeManager.getBluetoothCatalog()
         val parsedCatalog = rawCatalog?.let { raw ->
             runCatching { parseCatalog(request.requestId, JSONObject(raw)) }.getOrNull()
         }
-        val response = parsedCatalog ?: BluetoothDeviceCatalog(
-            requestId = request.requestId,
-            controllerAvailable = false,
-            radioEnabled = false,
-            supportsPerDeviceControl = false,
-            errorCode = "privileged_bridge_unavailable",
-            errorMessage = "Shizuku permission and service are required",
-        )
+        val response = parsedCatalog ?: unavailableCatalog(request.requestId)
         networkManager.sendMessage(sourceDeviceId, response)
     }
 
     suspend fun handleCommand(sourceDeviceId: String, command: BluetoothHandoffCommand) {
-        privilegedBridgeManager.ensureReady()
+        if (!privilegedBridgeManager.ensureReady()) {
+            networkManager.sendMessage(sourceDeviceId, unavailableResult(command))
+            return
+        }
         val response = privilegedBridgeManager.executeBluetoothCommand(
             action = command.action,
             deviceKey = command.deviceKey,
             enabled = command.enabled ?: false,
         )?.let { raw ->
             runCatching { parseResult(command, JSONObject(raw)) }.getOrNull()
-        } ?: BluetoothHandoffResult(
-            operationId = command.operationId,
-            action = command.action,
-            success = false,
-            errorCode = "privileged_bridge_unavailable",
-            errorMessage = "Shizuku permission and service are required",
-        )
+        } ?: unavailableResult(command)
         networkManager.sendMessage(sourceDeviceId, response)
     }
+
+    private fun unavailableCatalog(requestId: String) = BluetoothDeviceCatalog(
+        requestId = requestId,
+        controllerAvailable = false,
+        radioEnabled = false,
+        supportsPerDeviceControl = false,
+        errorCode = "privileged_bridge_unavailable",
+        errorMessage = "Shizuku permission and service are required",
+    )
+
+    private fun unavailableResult(command: BluetoothHandoffCommand) = BluetoothHandoffResult(
+        operationId = command.operationId,
+        action = command.action,
+        success = false,
+        errorCode = "privileged_bridge_unavailable",
+        errorMessage = "Shizuku permission and service are required",
+    )
 
     private fun parseCatalog(requestId: String, json: JSONObject): BluetoothDeviceCatalog {
         val devicesJson = json.optJSONArray("devices")
