@@ -70,15 +70,8 @@ fun AboutScreen(rootNavController: NavController, modifier: Modifier = Modifier)
 
             item {
                 TextPreferenceWidget(
-                    title = stringResource(R.string.whats_new),
-                    onPreferenceClick = { uriHandler.openUri("https://github.com/shrimqy/Sefirah-Android/releases") },
-                )
-            }
-
-            item {
-                TextPreferenceWidget(
                     title = stringResource(R.string.windows_app),
-                    onPreferenceClick = { uriHandler.openUri("https://github.com/shrimqy/Sefirah") },
+                    onPreferenceClick = { uriHandler.openUri("https://github.com/AlexbeatsZ/Sefirah") },
                 )
             }
 
@@ -99,7 +92,7 @@ fun AboutScreen(rootNavController: NavController, modifier: Modifier = Modifier)
                     LinkIcon(
                         label = "GitHub",
                         icon = CustomIcons.Github,
-                        url = "https://github.com/shrimqy/Sefirah-Android",
+                        url = "https://github.com/AlexbeatsZ/Sefirah-Android",
                     )
 
                     LinkIcon(

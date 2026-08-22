@@ -80,7 +80,7 @@ internal class WelcomeStep : OnboardingStep {
                     FilledTonalButton(
                         onClick = {
                             val intent = Intent(Intent.ACTION_VIEW).apply {
-                                data = Uri.parse("https://github.com/shrimqy/Sefirah")
+                                data = Uri.parse("https://github.com/AlexbeatsZ/Sefirah")
                             }
                             context.startActivity(intent)
                         },
@@ -108,7 +108,7 @@ internal class WelcomeStep : OnboardingStep {
                     FilledTonalButton(
                         onClick = {
                             val intent = Intent(Intent.ACTION_VIEW).apply {
-                                data = "https://github.com/shrimqy/Sefirah-Android".toUri()
+                                data = "https://github.com/AlexbeatsZ/Sefirah-Android".toUri()
                             }
                             context.startActivity(intent)
                         },

@@ -1,6 +1,5 @@
 package com.castle.sefirah.presentation.main
 
-import android.util.Log
 import androidx.compose.animation.graphics.res.animatedVectorResource
 import androidx.compose.animation.graphics.vector.AnimatedImageVector
 import androidx.compose.foundation.layout.Arrangement
@@ -17,7 +16,6 @@ import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteItem
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,10 +30,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.castle.sefirah.R
 import com.castle.sefirah.navigation.MainRouteScreen
-import com.castle.sefirah.navigation.SettingsRouteScreen
 import com.castle.sefirah.navigation.SyncRoute
 import com.castle.sefirah.navigation.graphs.MainNavGraph
-import sefirah.data.repository.ReleaseRepository
 import sefirah.presentation.components.AppTopBar
 import sefirah.presentation.components.NavigationItem
 import sefirah.presentation.components.NavigationItemIcon
@@ -53,19 +49,6 @@ fun MainScreen(
 
     val navigationItems = navigationItems()
     val selectedItem = navigationItems.indexOfFirst { it.route == currentRoute }.takeIf { it >= 0 } ?: 0
-
-    val hasCheckedForUpdate = remember { viewModel.hasCheckedForUpdate }
-
-    LaunchedEffect(Unit) {
-        if (!hasCheckedForUpdate.value) {
-            Log.d("MainScreen", "Checking for update")
-            val result = viewModel.checkForUpdate()
-            if (result is ReleaseRepository.Result.NewUpdate) {
-                rootNavController.navigate(SettingsRouteScreen.NewUpdateScreen.route)
-            }
-            hasCheckedForUpdate.value = true
-        }
-    }
 
     var searchQuery by remember { mutableStateOf("") }
     val isRefreshing by viewModel.isRefreshing.collectAsState()

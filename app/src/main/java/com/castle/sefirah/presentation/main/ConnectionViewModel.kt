@@ -1,6 +1,5 @@
 package com.castle.sefirah.presentation.main
 
-import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.komu.sekia.di.AppCoroutineScope
@@ -15,8 +14,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import sefirah.data.repository.AppUpdateChecker
-import sefirah.data.repository.ReleaseRepository
 import sefirah.domain.model.PairedDevice
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.interfaces.NetworkManager
@@ -27,17 +24,12 @@ class ConnectionViewModel @Inject constructor(
     private val networkManager: NetworkManager,
     private val deviceManager: DeviceManager,
     private val appScope: AppCoroutineScope,
-    private val appUpdateChecker: AppUpdateChecker
 ) : ViewModel() {
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     val pairedDevices: StateFlow<List<PairedDevice>> = deviceManager.pairedDevices
-
-    val newUpdate = MutableStateFlow<ReleaseRepository.Result.NewUpdate?>(null)
-
-    val hasCheckedForUpdate = mutableStateOf(false)
 
     val selectedDevice: StateFlow<PairedDevice?> = combine(
         pairedDevices,
@@ -96,13 +88,5 @@ class ConnectionViewModel @Inject constructor(
 
     fun selectDevice(device: PairedDevice) {
         deviceManager.selectDevice(device.deviceId)
-    }
-
-    suspend fun checkForUpdate(): ReleaseRepository.Result {
-        val result = appUpdateChecker.checkForUpdate()
-        if (result is ReleaseRepository.Result.NewUpdate) {
-            newUpdate.value = result
-        }
-        return result
     }
 }
