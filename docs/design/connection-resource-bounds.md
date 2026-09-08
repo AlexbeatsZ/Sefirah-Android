@@ -6,6 +6,11 @@ messages.
 
 ## Connection lifecycle
 
+- Feature recipient sets use copy-on-write iteration; asynchronous notification work captures an
+  immutable recipient snapshot. Feature enable/disable hooks are serialized, including the
+  first-device/last-device resource lifecycle. Android notification callbacks run concurrently
+  with connection changes and must never iterate a mutable LinkedHashSet.
+
 - `NetworkManagerImpl` owns at most one Android binding registration for `NetworkService`.
   Repeated boot/activity starts may start the service again, but must not increment the binding
   reference count.
@@ -60,6 +65,15 @@ messages.
   absent, fail immediately with `privileged_bridge_unavailable`; do not stack six-second binding
   loops for every periodic catalog refresh. The sticky binder listener performs the next bind when
   Shizuku becomes available again.
+- Keep only one UserService bind pending. A six-second timeout removes the failed registration,
+  marks the bridge as failed, and enforces a five-second cooldown before another attempt.
+  Use monotonic time and ignore callbacks from removed connection generations. Clipboard polling
+  initiates this recovery only while an eligible connected clipboard target exists; recovery must
+  not depend on a Bluetooth request or opening settings.
+- Multiple Shizuku server instances can split the bind request and UserService token callback.
+  `ShizukuManager: unable to find token` plus two server PIDs identifies this external failure.
+  Recover through Shizuku's supported starter as one instance; Sefirah must not kill or bootstrap
+  Shizuku itself or obtain additional privileges to work around it.
 - Do not add arbitrary commands, arbitrary Binder transactions, or a generic shell/path API.
 
 ## Verification

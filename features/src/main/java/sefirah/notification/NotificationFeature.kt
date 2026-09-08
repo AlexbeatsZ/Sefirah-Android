@@ -65,7 +65,7 @@ class NotificationFeature @Inject constructor(
     }
 
     fun sendActiveNotifications(deviceId: String? = null) {
-        val targetDeviceIds = deviceId?.let { setOf(it) } ?: enabledDevices
+        val targetDeviceIds = deviceId?.let { setOf(it) } ?: activeDeviceIds
 
         if (!isListenerConnected || targetDeviceIds.isEmpty()) {
             return
@@ -96,7 +96,7 @@ class NotificationFeature @Inject constructor(
 
 
     override fun onNotificationPosted(notification: StatusBarNotification) {
-        sendNotification(notification, NotificationInfoType.New, enabledDevices)
+        sendNotification(notification, NotificationInfoType.New, activeDeviceIds)
     }
 
     override fun onNotificationRemoved(notification: StatusBarNotification) {

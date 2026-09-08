@@ -346,7 +346,7 @@ class NetworkService : Service() {
         scope.launch {
             while (isActive) {
                 val shouldReadClipboard = hasConnectedClipboardTarget()
-                if (shouldReadClipboard && privilegedBridgeManager.status.value == PrivilegedBridgeStatus.Ready) {
+                if (shouldReadClipboard) {
                     privilegedBridgeManager.readClipboardText()?.let { content ->
                         clipboardEventTracker.recordLocalText(content)?.let { eventId ->
                             sendClipboardMessage(

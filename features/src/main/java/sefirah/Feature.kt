@@ -2,6 +2,9 @@ package sefirah
 
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.model.DevicePreferences
+import java.util.concurrent.CopyOnWriteArraySet
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Base type for a singleton feature that can be active for zero or more connected devices.
@@ -11,11 +14,12 @@ abstract class Feature(
 ) {
 
     /** Device IDs for which this feature is currently active. */
-    protected val enabledDevices = mutableSetOf<String>()
+    protected val enabledDevices = CopyOnWriteArraySet<String>()
+    protected val lifecycleMutex = Mutex()
 
-    /** Read-only view of [enabledDevices] for subclasses and callers that send to actives. */
+    /** Stable snapshot for asynchronous sends; never expose the live collection. */
     val activeDeviceIds: Set<String>
-        get() = enabledDevices
+        get() = enabledDevices.toTypedArray().toSet()
 
     /** Whether this feature is turned on in [prefs] for the device. */
     abstract fun isPrefEnabled(prefs: DevicePreferences): Boolean
@@ -36,15 +40,15 @@ abstract class Feature(
     protected open suspend fun onStop(deviceId: String) {}
 
     /** Mark [deviceId] active and run start hooks. Idempotent if already enabled. */
-    open suspend fun enable(deviceId: String) {
-        if (deviceId in enabledDevices) return
+    open suspend fun enable(deviceId: String) = lifecycleMutex.withLock {
+        if (deviceId in enabledDevices) return@withLock
         enabledDevices.add(deviceId)
         onStart(deviceId)
     }
 
     /** Mark [deviceId] inactive and run stop hooks. Idempotent if already disabled. */
-    open suspend fun disable(deviceId: String) {
-        if (deviceId !in enabledDevices) return
+    open suspend fun disable(deviceId: String) = lifecycleMutex.withLock {
+        if (deviceId !in enabledDevices) return@withLock
         enabledDevices.remove(deviceId)
         onStop(deviceId)
     }

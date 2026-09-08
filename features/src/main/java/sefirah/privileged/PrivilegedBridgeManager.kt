@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -40,7 +41,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
     private var bridge: IPrivilegedBridge? = null
     @Volatile
     private var started = false
-    private var lastBindAttemptAt = 0L
+    private val bindingPolicy = BridgeBindingPolicy()
     private val readinessMutex = Mutex()
     private val bridgeCallExecutor = Executors.newFixedThreadPool(2) { runnable ->
         Thread(runnable, "Sefirah-PrivilegedBridgeCall").apply { isDaemon = true }
@@ -54,26 +55,32 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         .debuggable(false)
         .version(SERVICE_VERSION)
 
-    private val serviceConnection = object : ServiceConnection {
+    private var serviceConnection: ServiceConnection? = null
+
+    private fun newServiceConnection() = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
-            if (!started) {
-                runCatching { Shizuku.unbindUserService(userServiceArgs, this, true) }
-                    .onFailure { Log.w(TAG, "Discarding late privileged bridge callback failed", it) }
-                return
-            }
-            Log.i(TAG, "Privileged bridge connected")
-            bridge = IPrivilegedBridge.Stub.asInterface(binder)
-            _status.value = if (binder.pingBinder()) {
-                PrivilegedBridgeStatus.Ready
-            } else {
-                PrivilegedBridgeStatus.Error
+            synchronized(this@PrivilegedBridgeManager) {
+                // An old callback must never publish or remove the replacement generation.
+                if (!started || serviceConnection !== this) return
+                Log.i(TAG, "Privileged bridge connected")
+                bindingPolicy.reset()
+                bridge = IPrivilegedBridge.Stub.asInterface(binder)
+                _status.value = if (binder.pingBinder()) {
+                    PrivilegedBridgeStatus.Ready
+                } else {
+                    PrivilegedBridgeStatus.Error
+                }
             }
         }
 
         override fun onServiceDisconnected(name: ComponentName) {
-            Log.w(TAG, "Privileged bridge disconnected")
-            bridge = null
-            _status.value = PrivilegedBridgeStatus.Unavailable
+            synchronized(this@PrivilegedBridgeManager) {
+                if (serviceConnection !== this) return
+                Log.w(TAG, "Privileged bridge disconnected")
+                bindingPolicy.reset()
+                bridge = null
+                _status.value = PrivilegedBridgeStatus.Unavailable
+            }
         }
     }
 
@@ -81,8 +88,11 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
         if (started) refreshAndBind()
     }
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        destroyDetachedBridge()
-        if (started) _status.value = PrivilegedBridgeStatus.Unavailable
+        synchronized(this) {
+            destroyDetachedBridge()
+            bindingPolicy.reset()
+            if (started) _status.value = PrivilegedBridgeStatus.Unavailable
+        }
     }
     private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
         if (requestCode == PERMISSION_REQUEST_CODE) {
@@ -114,7 +124,9 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
 
         val removedByShizuku = runCatching {
             if (Shizuku.pingBinder()) {
-                Shizuku.unbindUserService(userServiceArgs, serviceConnection, true)
+                val connection = serviceConnection
+                serviceConnection = null
+                connection?.let { Shizuku.unbindUserService(userServiceArgs, it, true) }
                 true
             } else {
                 false
@@ -131,7 +143,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
             Shizuku.removeRequestPermissionResultListener(permissionResultListener)
         }
         started = false
-        lastBindAttemptAt = 0L
+        bindingPolicy.reset()
         _status.value = PrivilegedBridgeStatus.Unavailable
     }
 
@@ -155,6 +167,7 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
     }
 
     suspend fun readClipboardText(): String? = withContext(Dispatchers.IO) {
+        if (bridge?.asBinder()?.pingBinder() != true && !ensureReady()) return@withContext null
         runCatching { bridge?.readClipboardText() }.getOrNull()
     }
 
@@ -172,16 +185,19 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
                     return@withLock false
                 }
 
-                val deadline = System.currentTimeMillis() + timeoutMillis
-                while (System.currentTimeMillis() < deadline) {
+                refreshAndBind()
+                val deadline = SystemClock.elapsedRealtime() + timeoutMillis
+                while (SystemClock.elapsedRealtime() < deadline) {
                     if (bridge?.asBinder()?.pingBinder() == true) {
                         _status.value = PrivilegedBridgeStatus.Ready
                         return@withLock true
                     }
-                    refreshAndBind()
+                    if (_status.value != PrivilegedBridgeStatus.Binding) return@withLock false
                     delay(BIND_RETRY_INTERVAL_MS)
                 }
+                if (bridge?.asBinder()?.pingBinder() == true) return@withLock true
                 Log.w(TAG, "Privileged bridge did not become ready within ${timeoutMillis}ms; status=${_status.value}")
+                recycleBridge()
                 false
             }
         }
@@ -230,17 +246,15 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
             _status.value = PrivilegedBridgeStatus.Ready
             return
         }
-        val now = System.currentTimeMillis()
-        if (_status.value == PrivilegedBridgeStatus.Binding && now - lastBindAttemptAt < BIND_RETRY_INTERVAL_MS) {
-            return
-        }
-        lastBindAttemptAt = now
+        if (!bindingPolicy.begin(SystemClock.elapsedRealtime())) return
         _status.value = PrivilegedBridgeStatus.Binding
         Log.i(TAG, "Binding privileged bridge")
         runCatching {
-            Shizuku.bindUserService(userServiceArgs, serviceConnection)
+            val connection = serviceConnection ?: newServiceConnection().also { serviceConnection = it }
+            Shizuku.bindUserService(userServiceArgs, connection)
         }.onFailure {
             Log.e(TAG, "Failed to bind privileged bridge", it)
+            bindingPolicy.failed(SystemClock.elapsedRealtime())
             _status.value = PrivilegedBridgeStatus.Error
         }
     }
@@ -264,16 +278,19 @@ class PrivilegedBridgeManager @Inject constructor(context: Context) {
     @Synchronized
     private fun recycleBridge() {
         bridge = null
-        _status.value = PrivilegedBridgeStatus.Unavailable
-        lastBindAttemptAt = 0L
+        _status.value = PrivilegedBridgeStatus.Error
+        bindingPolicy.failed(SystemClock.elapsedRealtime())
+        val connection = serviceConnection
+        serviceConnection = null
         runCatching {
-            Shizuku.unbindUserService(userServiceArgs, serviceConnection, true)
+            connection?.let { Shizuku.unbindUserService(userServiceArgs, it, true) }
         }.onFailure {
             Log.w(TAG, "Failed to recycle privileged bridge", it)
         }
     }
 
     private fun destroyDetachedBridge() {
+        serviceConnection = null
         val detached = bridge
         bridge = null
         if (detached?.asBinder()?.pingBinder() != true) return
