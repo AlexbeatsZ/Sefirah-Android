@@ -62,9 +62,11 @@
 
 Android versionCode 51 fixes concurrent feature-recipient iteration and serializes feature
 lifecycle hooks. Privileged binding now has a single pending registration, timeout removal,
-cooldown, stale-callback isolation, and recovery driven by enabled clipboard polling. Redmi K70
-was updated preserving data on 2026-09-09; bidirectional clipboard passed both normally and after
-terminating the privileged process, which reconnected in about 1.1 seconds without UI interaction.
+cooldown, stale-callback isolation, and recovery driven by enabled clipboard polling. Both
+Redmi K70 and Xiaomi Pad 6 Pro were updated preserving data and pairings on 2026-09-09;
+bidirectional clipboard passed both normally and after terminating the privileged process,
+which reconnected in 1.1–1.5 seconds without UI interaction. Sefirah Accessibility remains
+disabled on both devices.
 
 The feature branch contains the Shizuku clipboard/Bluetooth bridge, Bluetooth catalog and handoff UI, bounded privileged-call recovery, localization, and remote-storage groundwork. Privileged readiness is single-flight, and Bluetooth requests fail promptly with `privileged_bridge_unavailable` when the Shizuku binder is absent instead of starting overlapping retry loops. The fork has no GitHub release polling, automatic update prompt, or update screen; runtime repository links target the AlexbeatsZ forks. It carries selected upstream v3.0.1 transfer/contact fixes while retaining the fork's bounded transfer ownership and capability-gated mixed-version protocol. Installed APK versions, device connectivity, Shizuku process state, and hardware state are volatile; inspect them before deployment or physical testing. Keep completed evidence in Git history and tests rather than chronological task boards.
 
