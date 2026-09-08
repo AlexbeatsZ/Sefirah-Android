@@ -14,7 +14,7 @@ android {
     defaultConfig {
         applicationId = "com.castle.sefirah"
 
-        versionCode = 51
+        versionCode = 52
         versionName = "3.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

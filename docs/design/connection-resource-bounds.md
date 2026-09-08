@@ -44,8 +44,7 @@ messages.
   are limited to 8 MiB. A line over its limit terminates that connection.
 - At most eight inbound TLS handshakes may be pending, each with a five-second socket timeout.
   Pending sockets must be tracked and closed when the service stops.
-- Clipboard text is opt-in per connected peer, limited to 256 KiB, and clips marked
-  `EXTRA_IS_SENSITIVE` are never returned by the privileged bridge.
+- Clipboard text is opt-in per connected peer and limited to 256 KiB; clips marked `EXTRA_IS_SENSITIVE` (such as verification codes) are permitted.
 - Bitmap decoding uses encoded-length, dimension, and pixel limits. App and notification icons are
   downscaled, notification encoders are serialized per notification with a global concurrency
   ceiling, media thumbnails are cached and decoded once per render, and wallpaper encoding is

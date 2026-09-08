@@ -12,8 +12,8 @@ class ClipboardTextPolicyTest {
     }
 
     @Test
-    fun `rejects sensitive text`() {
-        assertNull(ClipboardTextPolicy.acceptedText("private", isSensitive = true))
+    fun `accepts sensitive text such as verification codes`() {
+        assertEquals("040006", ClipboardTextPolicy.acceptedText("040006", isSensitive = true))
     }
 
     @Test
