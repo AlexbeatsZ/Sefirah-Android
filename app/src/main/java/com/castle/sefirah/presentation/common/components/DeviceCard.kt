@@ -58,7 +58,7 @@ fun DeviceCard(
                 }
                 Image(
                     painter = rememberAsyncImagePainter(model = avatarBitmap),
-                    contentDescription = stringResource(R.string.profile_picture),
+                    contentDescription = "Profile Picture",
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)

@@ -2,11 +2,9 @@
 <resources>
   <!-- App -->
   <string name="version">バージョン</string>
-  <string name="windows_app">Windows アプリ</string>
   <string name="share_deep_link">デスクトップに共有</string>
   <!-- Notifications Groups-->
   <string name="group_file_transfer">ファイル転送</string>
-  <string name="group_network">ネットワーク</string>
   <string name="group_media">メディア</string>
   <!-- Channels -->
   <string name="channel_transfer_progress">転送の進捗</string>
@@ -82,8 +80,6 @@
   <!-- Onboarding & Welcome -->
   <string name="welcome">ようこそ</string>
   <string name="welcome_instructions">それでは始めましょう。まずは GitHub での指示に従って Windows のアプリをダウンロードしてインストールしてください。</string>
-  <string name="welcome_instructions_2">完了後に Android アプリの GitHub ページで詳細を確認してください。</string>
-  <string name="android_app_button">Android アプリ</string>
   <string name="windows_app_button">Windows アプリ</string>
   <!-- Preferences -->
   <string name="clipboard_sync_preference">クリップボードをデスクトップと同期</string>
@@ -140,8 +136,6 @@
   <!-- Toast Messages -->
   <string name="toast_network">Make sure you\'re connected to the same network as your PC</string>
   <string name="update_check_notification_update_available">New version available!</string>
-  <string name="update_check_confirm">Download</string>
-  <string name="action_not_now">Not now</string>
   <string name="update_check_open">Open on Github</string>
   <string name="error">Error</string>
   <string name="connection_toggle">Connection toggle</string>

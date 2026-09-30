@@ -17,7 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import sefirah.clipboard.ClipboardListener
+import sefirah.clipboard.ClipboardAccessibilityService
+import sefirah.worker.ShizukuHelper
 import sefirah.common.util.PermissionStates
 import sefirah.common.util.checkBatteryOptimization
 import sefirah.common.util.checkLocationPermissions
@@ -25,6 +26,7 @@ import sefirah.common.util.checkNotificationPermission
 import sefirah.common.util.checkStoragePermission
 import sefirah.common.util.contactsPermissionGranted
 import sefirah.common.util.isAccessibilityServiceEnabled
+import sefirah.common.util.isCallLogsPermissionGranted
 import sefirah.common.util.isNotificationListenerEnabled
 import sefirah.common.util.nearbyDevicesPermissionGranted
 import sefirah.common.util.phoneStatePermissionGranted
@@ -36,8 +38,6 @@ import sefirah.domain.interfaces.NetworkManager
 import sefirah.domain.interfaces.PreferencesRepository
 import sefirah.domain.model.LocalDevice
 import sefirah.network.NetworkDiscovery
-import sefirah.privileged.PrivilegedBridgeManager
-import sefirah.privileged.PrivilegedBridgeStatus
 import javax.inject.Inject
 
 private const val TAG = "SettingsViewModel"
@@ -49,10 +49,8 @@ class SettingsViewModel @Inject constructor(
     private val networkManager: NetworkManager,
     networkDiscovery: NetworkDiscovery,
     deviceManager: DeviceManager,
-    application: Application,
-    private val privilegedBridgeManager: PrivilegedBridgeManager,
+    application: Application
 ) : AndroidViewModel(application) {
-    val privilegedBridgeStatus: StateFlow<PrivilegedBridgeStatus> = privilegedBridgeManager.status
     val localDevice: StateFlow<LocalDevice?> = deviceManager.localDeviceFlow
 
     val networkList: StateFlow<List<NetworkEntity>> = appRepository
@@ -61,6 +59,14 @@ class SettingsViewModel @Inject constructor(
 
     val trustAllNetworks: StateFlow<Boolean> = preferencesRepository
         .readTrustAllNetworks()
+        .stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    val showActionLabels: StateFlow<Boolean> = preferencesRepository
+        .readShowActionLabels()
+        .stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    val clipboardWorkerEnabled: StateFlow<Boolean> = preferencesRepository
+        .readClipboardWorkerEnabled()
         .stateIn(viewModelScope, SharingStarted.Lazily, true)
 
     private val _storageLocation = MutableStateFlow("")
@@ -81,7 +87,6 @@ class SettingsViewModel @Inject constructor(
 
 
     init {
-        privilegedBridgeManager.start()
         updatePermissionStates()
         
         viewModelScope.launch {
@@ -105,10 +110,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             appEntry = preferencesRepository.readAppEntry()
         }
-    }
-
-    fun requestPrivilegedAccess() {
-        privilegedBridgeManager.requestPermission()
     }
 
     fun updateDeviceName(newName: String) {
@@ -135,7 +136,8 @@ class SettingsViewModel @Inject constructor(
             val smsGranted = smsPermissionGranted(context, clearPermission)
             val contactsGranted = contactsPermissionGranted(context, clearPermission)
             val phoneStateGranted = phoneStatePermissionGranted(context, clearPermission)
-            
+            val callLogsGranted = isCallLogsPermissionGranted(context)
+
             _permissionStates.value = PermissionStates(
                 notificationGranted = notificationGranted,
                 batteryGranted = checkBatteryOptimization(context),
@@ -143,11 +145,13 @@ class SettingsViewModel @Inject constructor(
                 nearbyDevicesGranted = nearbyDevicesGranted,
                 overlayGranted = Settings.canDrawOverlays(context),
                 storageGranted = storageGranted,
-                accessibilityGranted = isAccessibilityServiceEnabled(context, "${context.packageName}/${ClipboardListener::class.java.canonicalName}"),
+                accessibilityGranted = isAccessibilityServiceEnabled(context, "${context.packageName}/${ClipboardAccessibilityService::class.java.canonicalName}"),
+                shizukuGranted = ShizukuHelper.isAuthorized(),
                 notificationListenerGranted = isNotificationListenerEnabled(context),
                 smsPermissionGranted = smsGranted,
                 contactsGranted = contactsGranted,
-                phoneStateGranted = phoneStateGranted
+                phoneStateGranted = phoneStateGranted,
+                callLogsGranted = callLogsGranted
             )
         }
     }
@@ -199,7 +203,18 @@ class SettingsViewModel @Inject constructor(
     fun saveTrustAllNetworks(enabled: Boolean) {
         viewModelScope.launch {
             preferencesRepository.saveTrustAllNetworks(enabled)
-            // StateFlow will automatically update from the repository flow
+        }
+    }
+
+    fun saveShowActionLabels(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.saveShowActionLabels(enabled)
+        }
+    }
+
+    fun saveClipboardWorkerEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.saveClipboardWorkerEnabled(enabled)
         }
     }
 

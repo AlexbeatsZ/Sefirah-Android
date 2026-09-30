@@ -13,7 +13,6 @@ import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,11 +24,7 @@ import com.castle.sefirah.presentation.home.components.DeviceControlCard
 import com.castle.sefirah.presentation.home.components.MediaCard
 import com.castle.sefirah.presentation.home.components.SelectedAudioDevice
 import com.castle.sefirah.presentation.home.components.SwipeableDevicesCard
-import com.castle.sefirah.presentation.home.components.HeadsetHandoffCard
 import com.castle.sefirah.presentation.main.ConnectionViewModel
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 @Composable
@@ -44,18 +39,8 @@ fun HomeScreen(
     val activeSessions by viewModel.activeSessions.collectAsState()
     val audioDevices by viewModel.audioDevices.collectAsState()
     val actions by viewModel.actions.collectAsState()
+    val showActionLabels by viewModel.showActionLabels.collectAsState()
     val batteryByDevice by viewModel.batteryByDevice.collectAsState()
-    val headsetConfiguration by viewModel.headsetConfiguration.collectAsState()
-    val headsetHandoffState by viewModel.headsetHandoffState.collectAsState()
-    val selectedEndpointId by viewModel.selectedEndpointId.collectAsState()
-
-    LaunchedEffect(selectedEndpointId) {
-        if (selectedEndpointId == null) return@LaunchedEffect
-        while (currentCoroutineContext().isActive) {
-            viewModel.refreshBluetoothDevices()
-            delay(8_000)
-        }
-    }
 
     // Bottom sheet state
     val scope = rememberCoroutineScope()
@@ -103,25 +88,11 @@ fun HomeScreen(
                     )
                 }
 
-                if (headsetConfiguration.headsets.isNotEmpty()) {
-                    item(key = "headset_handoff") {
-                        HeadsetHandoffCard(
-                            configuration = headsetConfiguration,
-                            state = headsetHandoffState,
-                            selectedEndpointId = selectedEndpointId,
-                            localEndpointId = viewModel.localEndpointId,
-                            onRefresh = viewModel::refreshBluetoothDevices,
-                            onDisconnect = viewModel::disconnectHeadset,
-                            onSwitch = viewModel::switchHeadset,
-                            onVisibilityChanged = viewModel::setHeadsetVisibility,
-                        )
-                    }
-                }
-
                 if (actions.isNotEmpty()) {
                     item(key = "device_control") {
                         DeviceControlCard(
                             actions = actions,
+                            showLabels = showActionLabels,
                             onActionClick = { action ->
                                 viewModel.sendMessageToSelectedDevice(action)
                             }

@@ -13,14 +13,6 @@ import kotlinx.serialization.json.JsonClassDiscriminator
 sealed class SocketMessage
 
 @Serializable
-@SerialName("ConnectionAck")
-object ConnectionAck : SocketMessage()
-
-@Serializable
-@SerialName("ConnectionHeartbeat")
-object ConnectionHeartbeat : SocketMessage()
-
-@Serializable
 @SerialName("Disconnect")
 object Disconnect : SocketMessage()
 
@@ -33,6 +25,12 @@ object ClearNotifications : SocketMessage()
 object RequestApplicationList : SocketMessage()
 
 @Serializable
+@SerialName("RequestWorkerLaunch")
+data class RequestWorkerLaunch(
+    val command: String,
+) : SocketMessage()
+
+@Serializable
 @SerialName("BluetoothPairingRequest")
 object BluetoothPairingRequest : SocketMessage()
 
@@ -42,118 +40,6 @@ data class BluetoothPairingResult(
     val granted: Boolean,
     val deviceName: String? = null,
 ) : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothDeviceCatalogRequest")
-data class BluetoothDeviceCatalogRequest(
-    val requestId: String,
-) : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothDeviceCatalog")
-data class BluetoothDeviceCatalog(
-    val requestId: String,
-    val controllerAvailable: Boolean,
-    val radioEnabled: Boolean,
-    val supportsPerDeviceControl: Boolean,
-    val devices: List<BluetoothCatalogDevice> = emptyList(),
-    val errorCode: String? = null,
-    val errorMessage: String? = null,
-) : SocketMessage()
-
-@Serializable
-data class BluetoothCatalogDevice(
-    val deviceKey: String,
-    val displayName: String,
-    val isConnected: Boolean,
-    val bluetoothAddress: String? = null,
-    val isHeadset: Boolean = false,
-)
-
-@Serializable
-@SerialName("BluetoothHandoffRequest")
-data class BluetoothHandoffRequest(
-    val operationId: String,
-    val headsetId: String,
-    val targetEndpointId: String,
-) : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothDisconnectRequest")
-data class BluetoothDisconnectRequest(
-    val operationId: String,
-    val headsetId: String,
-    val endpointId: String,
-) : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothHandoffRefreshRequest")
-data object BluetoothHandoffRefreshRequest : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothHeadsetVisibilityRequest")
-data class BluetoothHeadsetVisibilityRequest(
-    val headsetId: String,
-    val isVisible: Boolean,
-) : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothHandoffCommand")
-data class BluetoothHandoffCommand(
-    val operationId: String,
-    val action: String,
-    val deviceKey: String? = null,
-    val enabled: Boolean? = null,
-) : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothHandoffResult")
-data class BluetoothHandoffResult(
-    val operationId: String,
-    val action: String,
-    val success: Boolean,
-    val radioEnabled: Boolean? = null,
-    val deviceConnected: Boolean? = null,
-    val errorCode: String? = null,
-    val errorMessage: String? = null,
-) : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothHandoffState")
-data class BluetoothHandoffState(
-    val operationId: String,
-    val headsetId: String,
-    val status: String,
-    val sourceEndpointId: String? = null,
-    val targetEndpointId: String,
-    val activeEndpointId: String? = null,
-    val message: String? = null,
-) : SocketMessage()
-
-@Serializable
-@SerialName("BluetoothHandoffConfiguration")
-data class BluetoothHandoffConfiguration(
-    val headsets: List<BluetoothHeadsetDescriptor> = emptyList(),
-    val endpoints: List<BluetoothEndpointDescriptor> = emptyList(),
-    val revision: Long = 0,
-) : SocketMessage()
-
-@Serializable
-data class BluetoothHeadsetDescriptor(
-    val id: String,
-    val displayName: String,
-    val isVisible: Boolean = true,
-    val isHeadset: Boolean = false,
-    val bluetoothAddress: String? = null,
-    val endpointIds: List<String> = emptyList(),
-    val activeEndpointId: String? = null,
-)
-
-@Serializable
-data class BluetoothEndpointDescriptor(
-    val id: String,
-    val displayName: String,
-)
 
 @Serializable
 @SerialName("Authentication")
@@ -185,7 +71,6 @@ data class DeviceInfo(
     val deviceName: String,
     val avatar: String? = null,
     val phoneNumbers: List<PhoneNumber> = emptyList(),
-    val capabilities: List<String> = emptyList(),
 ) : SocketMessage(), Parcelable
 
 @Serializable
@@ -224,6 +109,12 @@ data class CallLogInfo(
 @SerialName("DndState")
 data class DndState(
     val isEnabled: Boolean
+) : SocketMessage()
+
+@Serializable
+@SerialName("PlaySound")
+data class PlaySound(
+    val isPlaying: Boolean
 ) : SocketMessage()
 
 @Serializable
@@ -362,8 +253,6 @@ data class SftpServerInfo(
 data class ClipboardInfo(
     val clipboardType: String,
     val content: String,
-    val eventId: String? = null,
-    val originDeviceId: String? = null,
 ) : SocketMessage()
 
 @Serializable
@@ -400,6 +289,14 @@ data class MediaAction(
 ) : SocketMessage()
 
 @Serializable
+@SerialName("AudioAction")
+data class AudioAction(
+    val actionType: AudioActionType,
+    val source: String,
+    val value: Double? = null
+) : SocketMessage()
+
+@Serializable
 @SerialName("ApplicationList")
 data class ApplicationList(
     val appList: List<ApplicationInfo>
@@ -418,6 +315,14 @@ data class ApplicationInfo(
 data class ActionInfo(
     val actionId: String,
     val actionName: String,
+    val icon: String? = null,
+    val askForConfirmation: Boolean = false,
+) : SocketMessage()
+
+@Serializable
+@SerialName("ActionList")
+data class ActionList(
+    val actions: List<ActionInfo> = emptyList(),
 ) : SocketMessage()
 
 @Parcelize
@@ -432,7 +337,11 @@ data class FileMetadata(
     val fileName: String,
     val mimeType: String,
     val fileSize: Long,
-) : Parcelable
+) : Parcelable {
+    companion object {
+        const val CLIPBOARD_FILE_NAME = "clipboard"
+    }
+}
 
 @Parcelize
 @Serializable

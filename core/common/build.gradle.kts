@@ -22,6 +22,4 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.bcpkix.jdk18on)
-
-    testImplementation(libs.junit)
 }

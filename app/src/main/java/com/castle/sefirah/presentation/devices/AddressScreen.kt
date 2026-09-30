@@ -15,10 +15,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FloatingActionButton
@@ -69,10 +65,7 @@ fun AddressScreen(
                 title = { Text(stringResource(R.string.manage_addresses_title)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            painterResource(R.drawable.ic_arrow_back),
-                            stringResource(R.string.back_button),
-                        )
+                        Icon(painterResource(R.drawable.ic_arrow_back), "Back")
                     }
                 }
             )
@@ -81,10 +74,7 @@ fun AddressScreen(
             FloatingActionButton(
                 onClick = { showAddDialog = true }
             ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = stringResource(R.string.add_ip_address),
-                )
+                Icon(painterResource(R.drawable.ic_add), contentDescription = "Add IP")
             }
         }
     ) { paddingValues ->
@@ -191,7 +181,7 @@ private fun ReorderableCollectionItemScope.AddressListItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Outlined.DragHandle,
+                painter = painterResource(R.drawable.ic_drag_handle),
                 contentDescription = null,
                 modifier = Modifier
                     .padding(12.dp)
@@ -214,8 +204,8 @@ private fun ReorderableCollectionItemScope.AddressListItem(
             if (canDelete) {
                 IconButton(onClick = onDelete) {
                     Icon(
-                        imageVector = Icons.Outlined.Delete,
-                        contentDescription = stringResource(R.string.delete),
+                        painter = painterResource(R.drawable.ic_delete_fill),
+                        contentDescription = "Delete",
                         tint = MaterialTheme.colorScheme.error
                     )
                 }

@@ -1,55 +1,11 @@
 package sefirah.domain.util
 
 import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.modules.SerializersModule
 import kotlinx.serialization.modules.polymorphic
 import kotlinx.serialization.modules.subclass
-import sefirah.domain.model.ActionInfo
-import sefirah.domain.model.ApplicationInfo
-import sefirah.domain.model.ApplicationList
-import sefirah.domain.model.AudioDeviceInfo
-import sefirah.domain.model.AudioStreamState
-import sefirah.domain.model.Authentication
-import sefirah.domain.model.BatteryState
-import sefirah.domain.model.BluetoothPairingRequest
-import sefirah.domain.model.BluetoothPairingResult
-import sefirah.domain.model.BluetoothDeviceCatalog
-import sefirah.domain.model.BluetoothDeviceCatalogRequest
-import sefirah.domain.model.BluetoothHandoffCommand
-import sefirah.domain.model.BluetoothDisconnectRequest
-import sefirah.domain.model.BluetoothHandoffRefreshRequest
-import sefirah.domain.model.BluetoothHeadsetVisibilityRequest
-import sefirah.domain.model.BluetoothHandoffRequest
-import sefirah.domain.model.BluetoothHandoffResult
-import sefirah.domain.model.BluetoothHandoffState
-import sefirah.domain.model.BluetoothHandoffConfiguration
-import sefirah.domain.model.CallInfo
-import sefirah.domain.model.CallLogInfo
-import sefirah.domain.model.ClearNotifications
-import sefirah.domain.model.ClipboardInfo
-import sefirah.domain.model.ConnectionAck
-import sefirah.domain.model.ConnectionHeartbeat
-import sefirah.domain.model.ContactInfo
-import sefirah.domain.model.ConversationInfo
-import sefirah.domain.model.DeviceInfo
-import sefirah.domain.model.Disconnect
-import sefirah.domain.model.DndState
-import sefirah.domain.model.FileTransferInfo
-import sefirah.domain.model.MediaAction
-import sefirah.domain.model.NotificationAction
-import sefirah.domain.model.NotificationInfo
-import sefirah.domain.model.NotificationReply
-import sefirah.domain.model.PairMessage
-import sefirah.domain.model.PlaybackInfo
-import sefirah.domain.model.RequestApplicationList
-import sefirah.domain.model.RingerModeState
-import sefirah.domain.model.SftpServerInfo
-import sefirah.domain.model.SocketMessage
-import sefirah.domain.model.TextMessage
-import sefirah.domain.model.ThreadRequest
-import sefirah.domain.model.UdpBroadcast
+import sefirah.domain.model.*
 
 object MessageSerializer {
     @OptIn(ExperimentalSerializationApi::class)
@@ -57,30 +13,20 @@ object MessageSerializer {
         serializersModule = SerializersModule {
             polymorphic(SocketMessage::class) {
                 subclass(ActionInfo::class)
+                subclass(ActionList::class)
                 subclass(ApplicationInfo::class)
                 subclass(ApplicationList::class)
                 subclass(Authentication::class)
+                subclass(AudioAction::class)
                 subclass(AudioDeviceInfo::class)
                 subclass(AudioStreamState::class)
                 subclass(BatteryState::class)
                 subclass(BluetoothPairingResult::class)
                 subclass(BluetoothPairingRequest::class)
-                subclass(BluetoothDeviceCatalog::class)
-                subclass(BluetoothDeviceCatalogRequest::class)
-                subclass(BluetoothHandoffCommand::class)
-                subclass(BluetoothDisconnectRequest::class)
-                subclass(BluetoothHandoffRefreshRequest::class)
-                subclass(BluetoothHeadsetVisibilityRequest::class)
-                subclass(BluetoothHandoffRequest::class)
-                subclass(BluetoothHandoffResult::class)
-                subclass(BluetoothHandoffState::class)
-                subclass(BluetoothHandoffConfiguration::class)
                 subclass(CallInfo::class)
                 subclass(CallLogInfo::class)
                 subclass(ClearNotifications::class)
                 subclass(ClipboardInfo::class)
-                subclass(ConnectionAck::class)
-                subclass(ConnectionHeartbeat::class)
                 subclass(ContactInfo::class)
                 subclass(ConversationInfo::class)
                 subclass(DeviceInfo::class)
@@ -93,7 +39,9 @@ object MessageSerializer {
                 subclass(NotificationReply::class)
                 subclass(PairMessage::class)
                 subclass(PlaybackInfo::class)
+                subclass(PlaySound::class)
                 subclass(RequestApplicationList::class)
+                subclass(RequestWorkerLaunch::class)
                 subclass(RingerModeState::class)
                 subclass(SftpServerInfo::class)
                 subclass(TextMessage::class)
@@ -109,22 +57,14 @@ object MessageSerializer {
     }
 
     fun serialize(message: SocketMessage): String? {
-        return try {
-            json.encodeToString(SocketMessage.serializer(), message)
-        } catch (_: SerializationException) {
-            null
-        } catch (_: IllegalArgumentException) {
-            null
-        }
+        return runCatching {
+             json.encodeToString(SocketMessage.serializer(), message)
+        }.getOrNull()
     }
 
     fun deserialize(jsonString: String): SocketMessage? {
-        return try {
+        return runCatching {
             json.decodeFromString<SocketMessage>(jsonString)
-        } catch (_: SerializationException) {
-            null
-        } catch (_: IllegalArgumentException) {
-            null
-        }
+        }.getOrNull()
     }
 }

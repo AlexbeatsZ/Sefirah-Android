@@ -1,7 +1,6 @@
 package sefirah.transfer
 
 import android.content.Context
-import android.net.Uri
 import android.util.Log
 import io.ktor.utils.io.cancel
 import io.ktor.utils.io.jvm.javaio.toByteReadChannel
@@ -16,7 +15,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import sefirah.common.R
 import sefirah.common.notifications.NotificationCenter
-import sefirah.domain.model.FileMetadata
 import java.io.IOException
 import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
@@ -29,55 +27,54 @@ class SendFileHandler(
     private val context: Context,
     transferId: String,
     private val serverSocket: SSLServerSocket,
-    private val fileUris: List<Uri>,
-    private val filesMetadata: List<FileMetadata>,
+    private val files: List<TransferSource>,
     private val deviceName: String,
-    notificationCenter: NotificationCenter
+    notificationCenter: NotificationCenter?,
 ) {
-    val totalBytes: Long = filesMetadata.sumOf { it.fileSize }
+    val totalBytes: Long = files.sumOf { it.metadata.fileSize }
     private var totalBytesTransferred: Long = 0
 
-    private val notification = TransferNotification(context, transferId, notificationCenter)
+    private val notification: TransferNotification? =
+        notificationCenter?.let { TransferNotification(context, transferId, it) }
 
     suspend fun send() {
         var sslSocket: SSLSocket? = null
         try {
-            val title = context.getString(
-                R.string.notification_sending_title_format,
-                context.getString(R.string.notification_sending_action),
-                fileUris.size,
-                if (fileUris.size == 1) {
-                    context.getString(R.string.notification_file)
-                } else {
-                    context.getString(R.string.notification_files)
-                },
-                context.getString(R.string.notification_to),
-                deviceName
-            )
-
-            notification.showPreparing(title)
+            notification?.let {
+                val title = context.getString(
+                    R.string.notification_sending_title_format,
+                    context.getString(R.string.notification_sending_action),
+                    files.size,
+                    if (files.size == 1) {
+                        context.getString(R.string.notification_file)
+                    } else {
+                        context.getString(R.string.notification_files)
+                    },
+                    context.getString(R.string.notification_to),
+                    deviceName,
+                )
+                it.showPreparing(title)
+            }
 
             sslSocket = withContext(Dispatchers.IO) {
-                serverSocket.soTimeout = TRANSFER_ACCEPT_TIMEOUT_MS
                 serverSocket.accept() as? SSLSocket
             } ?: throw IOException("Failed to accept SSL connection")
-            sslSocket.soTimeout = TRANSFER_IO_TIMEOUT_MS
 
             val readChannel = sslSocket.inputStream.toByteReadChannel()
             val writeChannel = sslSocket.outputStream.asByteWriteChannel()
 
-            fileUris.forEachIndexed { index, fileUri ->
+            files.forEachIndexed { index, file ->
                 currentCoroutineContext().ensureActive()
 
                 withTimeout(5000.milliseconds) {
-                    if (readChannel.readUTF8Line(MAX_TRANSFER_CONTROL_LINE_CHARS) != TRANSFER_START_MESSAGE) {
+                    if (readChannel.readUTF8Line() != TRANSFER_START_MESSAGE) {
                         throw IOException("Invalid transfer handshake")
                     }
                 }
 
-                val metadata = filesMetadata[index]
+                val metadata = file.metadata
 
-                context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
+                file.open().use { inputStream ->
                     val buffer = ByteArray(BUFFER_SIZE)
                     var bytesRead: Int
 
@@ -88,34 +85,32 @@ class SendFileHandler(
                         writeChannel.flush()
                         totalBytesTransferred += bytesRead
 
-                        notification.updateProgress(
+                        notification?.updateProgress(
                             bytesTransferred = totalBytesTransferred,
                             totalBytes = totalBytes,
                             fileName = metadata.fileName,
                             fileIndex = index + 1,
-                            fileCount = fileUris.size
+                            fileCount = files.size,
                         )
                     }
                 }
 
-                val message = withTimeout(5000.milliseconds) {
-                    readChannel.readUTF8Line(MAX_TRANSFER_CONTROL_LINE_CHARS)
-                }
+                val message = readChannel.readUTF8Line()
                 if (message != TRANSFER_COMPLETE_MESSAGE) {
                     throw IOException("Invalid transfer confirmation: '$message'")
                 }
             }
 
-            notification.showCompleted(fileUris.size)
+            notification?.showCompleted(files.size)
 
             writeChannel.flushAndClose()
             readChannel.cancel()
         } catch (e: CancellationException) {
-            notification.cancel()
+            notification?.cancel()
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Send failed", e)
-            notification.showError(e.message ?: "Transfer failed")
+            notification?.showError(e.message ?: "Transfer failed")
             throw e
         } finally {
             sslSocket?.close()
@@ -126,9 +121,6 @@ class SendFileHandler(
     companion object {
         private const val TAG = "SendFileHandler"
         private const val BUFFER_SIZE = 131072 * 4 // 512 KB
-        private const val TRANSFER_ACCEPT_TIMEOUT_MS = 15_000
-        private const val TRANSFER_IO_TIMEOUT_MS = 30_000
-        private const val MAX_TRANSFER_CONTROL_LINE_CHARS = 128
         const val TRANSFER_START_MESSAGE = "start"
         const val TRANSFER_COMPLETE_MESSAGE = "complete"
     }

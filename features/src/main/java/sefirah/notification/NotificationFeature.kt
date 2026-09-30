@@ -6,27 +6,19 @@ import android.app.RemoteInput
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.drawable.BitmapDrawable
 import android.os.Build
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.text.SpannableString
-import android.util.LruCache
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.os.bundleOf
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import sefirah.Feature
 import sefirah.domain.model.DevicePreferences
 import sefirah.domain.model.NotificationTextMessage
@@ -37,8 +29,9 @@ import sefirah.domain.model.NotificationReply
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.interfaces.NetworkManager
 import sefirah.domain.interfaces.NotificationCallback
-import sefirah.common.util.drawableToBase64Compressed
-import java.util.concurrent.ConcurrentHashMap
+import sefirah.common.util.bitmapToBase64
+import sefirah.common.util.drawableToBase64
+import sefirah.common.util.drawableToBitmap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -50,10 +43,6 @@ class NotificationFeature @Inject constructor(
 ) : Feature(deviceManager), NotificationCallback {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val encodingJobs = ConcurrentHashMap<String, Job>()
-    private val encodingLocks = ConcurrentHashMap<String, Mutex>()
-    private val encodingSlots = Semaphore(MAX_CONCURRENT_NOTIFICATION_ENCODINGS)
-    private val appIconCache = LruCache<String, String>(APP_ICON_CACHE_ENTRIES)
     private var isListenerConnected : Boolean = false
 
     private lateinit var listener: NotificationListenerService
@@ -65,15 +54,15 @@ class NotificationFeature @Inject constructor(
     }
 
     fun sendActiveNotifications(deviceId: String? = null) {
-        val targetDeviceIds = deviceId?.let { setOf(it) } ?: activeDeviceIds
+        val targetDeviceIds = deviceId?.let { setOf(it) } ?: enabledDevices
 
-        if (!isListenerConnected || targetDeviceIds.isEmpty()) {
+        if (!isListenerConnected && targetDeviceIds.isEmpty()) {
             return
         } else {
-            launchConflated("snapshot:${targetDeviceIds.sorted().joinToString(",")}") {
+            scope.launch {
                 if (!::listener.isInitialized) {
                     Log.w(TAG, "Notification listener not connected")
-                    return@launchConflated
+                    return@launch
                 }
 
                 val activeNotifications = listener.activeNotifications
@@ -96,15 +85,10 @@ class NotificationFeature @Inject constructor(
 
 
     override fun onNotificationPosted(notification: StatusBarNotification) {
-        sendNotification(notification, NotificationInfoType.New, activeDeviceIds)
+        sendNotification(notification, NotificationInfoType.New, enabledDevices)
     }
 
     override fun onNotificationRemoved(notification: StatusBarNotification) {
-        encodingJobs.entries
-            .filter { it.key.startsWith("notification:${notification.key}:") }
-            .forEach { (key, job) ->
-                if (encodingJobs.remove(key, job)) job.cancel()
-            }
         // to remove the notification on the desktop
         val removeNotificationMessage = NotificationInfo(
             appPackage = notification.packageName,
@@ -232,31 +216,29 @@ class NotificationFeature @Inject constructor(
             return
         }
 
-        val targetKey = targetDeviceIds.sorted().joinToString(",")
-        launchConflated("notification:${sbn.key}:$targetKey") {
+        scope.launch {
             // Get app icon
-            val appIcon = synchronized(appIconCache) { appIconCache.get(packageName) }
-                ?: try {
-                    packageManager.getApplicationIcon(packageName)
-                        .let { drawableToBase64Compressed(it, APP_ICON_MAX_DIMENSION) }
-                        ?.also { encoded ->
-                            synchronized(appIconCache) { appIconCache.put(packageName, encoded) }
-                        }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Failed to encode app icon for $packageName", e)
-                    null
+            val appIcon = try {
+                val appIconDrawable = packageManager.getApplicationIcon(packageName)
+                if (appIconDrawable is BitmapDrawable) {
+                    val appIconBitmap = appIconDrawable.bitmap
+                    bitmapToBase64(appIconBitmap)
+                } else {
+                    // Convert to Bitmap if it's not already a BitmapDrawable
+                    val appIconBitmap = drawableToBitmap(appIconDrawable)
+                    bitmapToBase64(appIconBitmap)
                 }
-            currentCoroutineContext().ensureActive()
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            }
 
             val notificationKey = sbn.key
 
             // Get the notification large icon
             val largeIcon = notification.getLargeIcon()?.let { icon ->
-                icon.loadDrawable(context)?.let {
-                    drawableToBase64Compressed(it, LARGE_ICON_MAX_DIMENSION)
-                }
+                icon.loadDrawable(context)?.let { drawableToBase64(it) }
             }
-            currentCoroutineContext().ensureActive()
 
             // Get picture (if available)
 //            val picture = notification.extras.get(Notification.EXTRA_PICTURE)?.let { pictureBitmap ->
@@ -267,7 +249,7 @@ class NotificationFeature @Inject constructor(
             val title = getSpannableText(notification.extras.getCharSequence(Notification.EXTRA_TITLE))
                 ?: getSpannableText(notification.extras.getCharSequence(Notification.EXTRA_TITLE_BIG))
 
-            if (title.isNullOrEmpty()) return@launchConflated
+            if (title.isNullOrEmpty()) return@launch
 
             val text = getSpannableText(notification.extras.getCharSequence(Notification.EXTRA_TEXT))
                 ?: getSpannableText(notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT))
@@ -323,39 +305,12 @@ class NotificationFeature @Inject constructor(
 
             try {
                 Log.d("NotificationFeature", "${notificationInfo.appName} ${notificationInfo.title} ${notificationInfo.text}")
-                for (deviceId in targetDeviceIds) {
-                    networkManager.sendMessageAwait(deviceId, notificationInfo)
+                targetDeviceIds.forEach { deviceId ->
+                    networkManager.sendMessage(deviceId, notificationInfo)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to send notification message", e)
             }
-        }
-    }
-
-    private fun launchConflated(
-        key: String,
-        block: suspend CoroutineScope.() -> Unit,
-    ) {
-        synchronized(encodingJobs) {
-            encodingJobs.remove(key)?.cancel()
-            val encodingLock = encodingLocks.computeIfAbsent(key) { Mutex() }
-            lateinit var job: Job
-            job = scope.launch(start = CoroutineStart.LAZY) {
-                encodingLock.withLock {
-                    encodingSlots.withPermit {
-                        currentCoroutineContext().ensureActive()
-                        block()
-                    }
-                }
-            }
-            encodingJobs[key] = job
-            job.invokeOnCompletion {
-                encodingJobs.remove(key, job)
-                if (!encodingLock.isLocked && encodingJobs[key] == null) {
-                    encodingLocks.remove(key, encodingLock)
-                }
-            }
-            job.start()
         }
     }
 
@@ -372,9 +327,5 @@ class NotificationFeature @Inject constructor(
 
     companion object {
         const val TAG = "NotificationFeature"
-        private const val APP_ICON_CACHE_ENTRIES = 32
-        private const val APP_ICON_MAX_DIMENSION = 128
-        private const val LARGE_ICON_MAX_DIMENSION = 512
-        private const val MAX_CONCURRENT_NOTIFICATION_ENCODINGS = 2
     }
 }

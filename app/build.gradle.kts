@@ -1,3 +1,5 @@
+@file:Suppress("UnstableApiUsage")
+
 plugins {
     alias(libs.plugins.sefirah.android.application)
     alias(libs.plugins.compose.compiler)
@@ -14,9 +16,15 @@ android {
     defaultConfig {
         applicationId = "com.castle.sefirah"
 
-        versionCode = 52
-        versionName = "3.0.0"
+        versionCode = 35
+        versionName = "3.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DANDROID_STL=none")
+            }
+        }
     }
 
     dependenciesInfo {
@@ -41,6 +49,15 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1,DEPENDENCIES}"
             excludes += "META-INF/versions/**"
         }
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/jni/CMakeLists.txt")
+        }
     }
 }
 
@@ -58,7 +75,6 @@ kotlin {
     }
 }
 
-
 dependencies {
     api(projects.core.common)
     api(projects.core.network)
@@ -67,6 +83,7 @@ dependencies {
     api(projects.domain)
 
     implementation(libs.androidx.appcompat)
+    implementation(libs.material)
     implementation(libs.hilt.navigation.compose)
     implementation(libs.core.ktx)
     implementation(libs.androidx.work)
@@ -91,14 +108,13 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.guava)
 
+    compileOnly(libs.hidden.stub)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit)
-    debugImplementation(libs.apache.sshd.core)
-    debugImplementation(libs.apache.sshd.sftp)
-    debugImplementation(libs.bcpkix.jdk18on)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 }

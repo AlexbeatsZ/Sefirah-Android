@@ -15,6 +15,9 @@ interface PreferencesRepository {
     suspend fun saveTrustAllNetworks(enabled: Boolean)
     fun readTrustAllNetworks(): Flow<Boolean>
 
+    suspend fun saveShowActionLabels(enabled: Boolean)
+    fun readShowActionLabels(): Flow<Boolean>
+
     suspend fun updateStorageLocation(uri: String)
     suspend fun getStorageLocation(): Flow<String>
 
@@ -34,6 +37,9 @@ interface PreferencesRepository {
     // Device-specific settings
     suspend fun saveClipboardSyncSettingsForDevice(deviceId: String, clipboardSync: Boolean)
     fun readClipboardSyncSettingsForDevice(deviceId: String): Flow<Boolean>
+
+    suspend fun saveClipboardWorkerEnabled(enabled: Boolean)
+    fun readClipboardWorkerEnabled(): Flow<Boolean>
     
     suspend fun saveMessageSyncSettingsForDevice(deviceId: String, messageSync: Boolean)
     fun readMessageSyncSettingsForDevice(deviceId: String): Flow<Boolean>
@@ -64,5 +70,8 @@ interface PreferencesRepository {
 
     suspend fun saveRemoteStorageSettingsForDevice(deviceId: String, enabled: Boolean)
     fun readRemoteStorageSettingsForDevice(deviceId: String): Flow<Boolean>
+
+    suspend fun savePlaySoundSettingsForDevice(deviceId: String, enabled: Boolean)
+    fun readPlaySoundSettingsForDevice(deviceId: String): Flow<Boolean>
 }
 

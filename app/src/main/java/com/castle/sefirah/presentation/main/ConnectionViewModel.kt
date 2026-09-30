@@ -1,5 +1,6 @@
 package com.castle.sefirah.presentation.main
 
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.komu.sekia.di.AppCoroutineScope
@@ -14,22 +15,35 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import sefirah.data.repository.AppUpdateChecker
+import sefirah.data.repository.ReleaseRepository
 import sefirah.domain.model.PairedDevice
+import sefirah.domain.model.UpdateInfo
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.interfaces.NetworkManager
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 
 @HiltViewModel
 class ConnectionViewModel @Inject constructor(
     private val networkManager: NetworkManager,
     private val deviceManager: DeviceManager,
     private val appScope: AppCoroutineScope,
+    private val appUpdateChecker: AppUpdateChecker
 ) : ViewModel() {
 
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
     val pairedDevices: StateFlow<List<PairedDevice>> = deviceManager.pairedDevices
+
+    private val _updateInfo = MutableStateFlow<UpdateInfo?>(null)
+    val updateInfo: StateFlow<UpdateInfo?> = _updateInfo.asStateFlow()
+
+    private val _isCheckingForUpdate = MutableStateFlow(false)
+    val isCheckingForUpdate: StateFlow<Boolean> = _isCheckingForUpdate.asStateFlow()
+
+    val hasCheckedForUpdate = mutableStateOf(false)
 
     val selectedDevice: StateFlow<PairedDevice?> = combine(
         pairedDevices,
@@ -64,7 +78,7 @@ class ConnectionViewModel @Inject constructor(
                 connectionJobs.remove(device.deviceId)?.cancel()
                 connectionJobs[device.deviceId] = appScope.launch(Dispatchers.IO) {
                     networkManager.disconnect(device.deviceId)
-                    delay(200)
+                    delay(200.milliseconds)
                     networkManager.connectPaired(device)
                 }
             }
@@ -88,5 +102,24 @@ class ConnectionViewModel @Inject constructor(
 
     fun selectDevice(device: PairedDevice) {
         deviceManager.selectDevice(device.deviceId)
+    }
+
+    suspend fun checkForUpdate(force: Boolean = false): ReleaseRepository.Result {
+        _isCheckingForUpdate.value = true
+        return try {
+            val result = appUpdateChecker.checkForUpdate(force)
+            when (result) {
+                is ReleaseRepository.Result.NewUpdate -> {
+                    _updateInfo.value = result.updateInfo
+                }
+                is ReleaseRepository.Result.NoNewUpdate -> {
+                    result.updateInfo?.let { _updateInfo.value = it }
+                }
+                ReleaseRepository.Result.Error -> Unit
+            }
+            result
+        } finally {
+            _isCheckingForUpdate.value = false
+        }
     }
 }

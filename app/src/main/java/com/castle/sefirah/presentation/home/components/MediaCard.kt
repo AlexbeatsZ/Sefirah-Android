@@ -267,7 +267,7 @@ fun PlaybackSession(
                         IconButton(onClick = onSkipPreviousClick) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_skip_previous),
-                                contentDescription = stringResource(R.string.skip_previous),
+                                contentDescription = "Skip Previous",
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -297,7 +297,7 @@ fun PlaybackSession(
                         IconButton(onClick = onSkipNextClick) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_skip_next),
-                                contentDescription = stringResource(R.string.skip_next),
+                                contentDescription = "Skip Next",
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }

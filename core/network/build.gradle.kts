@@ -44,6 +44,4 @@ dependencies {
 
     implementation(libs.bundles.ktor)
     implementation(libs.androidx.hilt.work)
-
-    testImplementation(libs.junit)
 }

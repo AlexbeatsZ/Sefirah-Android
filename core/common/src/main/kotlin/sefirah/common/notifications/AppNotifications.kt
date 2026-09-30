@@ -20,16 +20,18 @@ object AppNotifications {
     const val TRANSFER_PROGRESS_CHANNEL = "file_transfer_progress_channel"
     const val TRANSFER_COMPLETE_CHANNEL = "file_transfer_complete_channel"
     const val TRANSFER_ERROR_CHANNEL = "file_transfer_error_channel"
-    
-    // Network related constants
-    private const val NETWORK_GROUP = "group_network"
+
+    // Device related constants
+    private const val DEVICE_GROUP = "group_device"
     const val DEVICE_CONNECTION_CHANNEL = "device_connection_channel"
     const val PAIRING_REQUEST_CHANNEL = "pairing_request_channel"
     const val BLUETOOTH_DISCOVERABLE_CHANNEL = "bluetooth_discoverable_channel"
     const val DEVICE_CONNECTION_ID = 2001
     const val PAIRING_REQUEST_ID = 2003
     const val BLUETOOTH_DISCOVERABLE_REQUEST_ID = 2005
-    
+    const val PLAY_SOUND_CHANNEL = "play_sound_channel"
+    const val PLAY_SOUND_ID = 3002
+
     // Media related constants
     private const val MEDIA_GROUP = "group_media"
     const val MEDIA_PLAYBACK_CHANNEL = "media_playback_channel"
@@ -49,8 +51,8 @@ object AppNotifications {
         notificationManager.createNotificationChannelGroups(
             listOf(
                 NotificationChannelGroup(FILE_TRANSFER_GROUP, context.getString(R.string.group_file_transfer)),
-                NotificationChannelGroup(NETWORK_GROUP, context.getString(R.string.group_network)),
-                NotificationChannelGroup(MEDIA_GROUP, context.getString(R.string.group_media))
+                NotificationChannelGroup(DEVICE_GROUP, context.getString(R.string.group_device)),
+                NotificationChannelGroup(MEDIA_GROUP, context.getString(R.string.group_media)),
             )
         )
 
@@ -68,28 +70,34 @@ object AppNotifications {
                     setGroup(FILE_TRANSFER_GROUP)
                 },
                 
-                // Network Channels
+                // Device Channels
                 buildNotificationChannel(DEVICE_CONNECTION_CHANNEL, IMPORTANCE_LOW) {
                     setName(context.getString(R.string.channel_device_connection))
-                    setGroup(NETWORK_GROUP)
+                    setGroup(DEVICE_GROUP)
                     setShowBadge(false)
                 },
                 buildNotificationChannel(PAIRING_REQUEST_CHANNEL, IMPORTANCE_HIGH) {
                     setName(context.getString(R.string.channel_pairing_request))
-                    setGroup(NETWORK_GROUP)
+                    setGroup(DEVICE_GROUP)
                 },
                 buildNotificationChannel(BLUETOOTH_DISCOVERABLE_CHANNEL, IMPORTANCE_HIGH) {
                     setName("Bluetooth pairing")
-                    setGroup(NETWORK_GROUP)
+                    setGroup(DEVICE_GROUP)
                 },
-                
+                buildNotificationChannel(PLAY_SOUND_CHANNEL, IMPORTANCE_HIGH) {
+                    setName(context.getString(R.string.play_sound))
+                    setGroup(DEVICE_GROUP)
+                    setSound(null, null)
+                },
+
                 // Media Channels
                 buildNotificationChannel(MEDIA_PLAYBACK_CHANNEL, IMPORTANCE_LOW) {
                     setName(context.getString(R.string.channel_media_playback))
                     setGroup(MEDIA_GROUP)
                     setShowBadge(false)
-                }
+                },
             )
         )
+        notificationManager.deleteNotificationChannelGroup("group_network")
     }
 } 

@@ -111,10 +111,7 @@ fun TrustedNetworkScreen(rootNavController: NavHostController) {
                     IconButton(
                         onClick = { rootNavController.navigateUp() }
                     ) {
-                        Icon(
-                            painterResource(R.drawable.ic_arrow_back),
-                            contentDescription = stringResource(R.string.back_button),
-                        )
+                        Icon(painterResource(R.drawable.ic_arrow_back), contentDescription = "Back")
                     }
                 },
             )
@@ -127,7 +124,7 @@ fun TrustedNetworkScreen(rootNavController: NavHostController) {
                         .fillMaxWidth()
                         .padding(MaterialTheme.padding.medium)
                 ) {
-                    Text(stringResource(R.string.add_network, currentWifiSsid.value.orEmpty()))
+                    Text("Add \"${currentWifiSsid.value}\"")
                 }
             }
         }

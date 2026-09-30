@@ -45,6 +45,16 @@ class PreferencesRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun saveShowActionLabels(enabled: Boolean) {
+        SHOW_ACTION_LABELS.update(enabled)
+    }
+
+    override fun readShowActionLabels(): Flow<Boolean> {
+        return datastore.data.map { preferences ->
+            preferences[SHOW_ACTION_LABELS] != false
+        }
+    }
+
     override suspend fun updateStorageLocation(uri: String) {
         STORAGE_LOCATION.update(uri)
     }
@@ -118,6 +128,16 @@ class PreferencesRepositoryImpl @Inject constructor(
     override fun readClipboardSyncSettingsForDevice(deviceId: String): Flow<Boolean> {
         return datastore.data.map { preferences ->
             preferences[deviceClipboardSyncKey(deviceId)] != false
+        }
+    }
+
+    override suspend fun saveClipboardWorkerEnabled(enabled: Boolean) {
+        CLIPBOARD_WORKER_ENABLED.update(enabled)
+    }
+
+    override fun readClipboardWorkerEnabled(): Flow<Boolean> {
+        return datastore.data.map { preferences ->
+            preferences[CLIPBOARD_WORKER_ENABLED] != false
         }
     }
 
@@ -221,6 +241,16 @@ class PreferencesRepositoryImpl @Inject constructor(
         }
     }
 
+    override suspend fun savePlaySoundSettingsForDevice(deviceId: String, enabled: Boolean) {
+        devicePlaySoundKey(deviceId).update(enabled)
+    }
+
+    override fun readPlaySoundSettingsForDevice(deviceId: String): Flow<Boolean> {
+        return datastore.data.map { preferences ->
+            preferences[devicePlaySoundKey(deviceId)] != false
+        }
+    }
+
     private suspend inline fun <T> Preferences.Key<T>.update(newValue: T) {
         datastore.edit { preferences ->
             preferences[this] = newValue
@@ -242,7 +272,8 @@ class PreferencesRepositoryImpl @Inject constructor(
                 mediaSessionNotification = preferences[deviceMediaSessionNotificationKey(deviceId)] != false,
                 remoteVolumeControl = preferences[deviceRemoteVolumeControlKey(deviceId)] == true,
                 mediaPlayerControl = preferences[deviceMediaPlayerControlKey(deviceId)] != false,
-                remoteStorage = preferences[deviceRemoteStorageKey(deviceId)] == true
+                remoteStorage = preferences[deviceRemoteStorageKey(deviceId)] == true,
+                playSound = preferences[devicePlaySoundKey(deviceId)] != false,
             )
         }
     }
@@ -258,6 +289,8 @@ class PreferencesRepositoryImpl @Inject constructor(
         val PASSIVE_DISCOVERY = booleanPreferencesKey("passiveDiscovery")
         val LAST_CHECKED_FOR_UPDATE = longPreferencesKey("lastCheckedForUpdate")
         val TRUST_ALL_NETWORKS = booleanPreferencesKey("trustAllNetworks")
+        val SHOW_ACTION_LABELS = booleanPreferencesKey("showActionLabels")
+        val CLIPBOARD_WORKER_ENABLED = booleanPreferencesKey("clipboardWorkerEnabled")
 
         fun permissionRequestedKey(permission: String) = booleanPreferencesKey("permission_requested_$permission")
         fun deviceClipboardSyncKey(deviceId: String) = booleanPreferencesKey("clipboardSync_$deviceId")
@@ -271,5 +304,6 @@ class PreferencesRepositoryImpl @Inject constructor(
         fun deviceRemoteVolumeControlKey(deviceId: String) = booleanPreferencesKey("remoteVolumeControl_$deviceId")
         fun deviceMediaPlayerControlKey(deviceId: String) = booleanPreferencesKey("mediaPlayerControl_$deviceId")
         fun deviceRemoteStorageKey(deviceId: String) = booleanPreferencesKey("remoteStorage_$deviceId")
+        fun devicePlaySoundKey(deviceId: String) = booleanPreferencesKey("playSound_$deviceId")
     }
 }

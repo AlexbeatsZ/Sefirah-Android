@@ -2,18 +2,14 @@ package sefirah.network.extensions
 
 import android.util.Log
 import sefirah.domain.model.ActionInfo
+import sefirah.domain.model.ActionList
 import sefirah.domain.model.AudioDeviceInfo
 import sefirah.domain.model.AudioStreamState
 import sefirah.domain.model.BaseRemoteDevice
 import sefirah.domain.model.BatteryState
 import sefirah.domain.model.BluetoothPairingRequest
-import sefirah.domain.model.BluetoothDeviceCatalogRequest
-import sefirah.domain.model.BluetoothHandoffCommand
-import sefirah.domain.model.BluetoothHandoffConfiguration
-import sefirah.domain.model.BluetoothHandoffState
 import sefirah.domain.model.ClearNotifications
 import sefirah.domain.model.ClipboardInfo
-import sefirah.domain.model.ConnectionHeartbeat
 import sefirah.domain.model.DeviceInfo
 import sefirah.domain.model.Disconnect
 import sefirah.domain.model.DiscoveredDevice
@@ -27,6 +23,7 @@ import sefirah.domain.model.NotificationReply
 import sefirah.domain.model.PairMessage
 import sefirah.domain.model.PairedDevice
 import sefirah.domain.model.PlaybackInfo
+import sefirah.domain.model.PlaySound
 import sefirah.domain.model.RequestApplicationList
 import sefirah.domain.model.RingerModeState
 import sefirah.domain.model.SocketMessage
@@ -48,7 +45,6 @@ suspend fun NetworkService.handleMessage(device: BaseRemoteDevice, message: Sock
         if (device is PairedDevice) {
             when (message) {
                 is DeviceInfo -> handleDeviceInfo(message, device)
-                is ConnectionHeartbeat -> Log.d(TAG, "Heartbeat received from ${device.deviceId}")
                 is ClearNotifications -> notificationFeature.removeAllNotification()
                 is RequestApplicationList -> appListHandler.handleRequest(device.deviceId)
                 is Disconnect -> disconnectDevice(device, true)
@@ -61,7 +57,7 @@ suspend fun NetworkService.handleMessage(device: BaseRemoteDevice, message: Sock
                 is NotificationReply -> notificationFeature.performReplyAction(message)
                 is PlaybackInfo -> remotePlaybackFeature.handlePlaybackSessionUpdates(device.deviceId, message)
                 is MediaAction -> playbackFeature.handlePlaybackAction(device.deviceId, message)
-                is ClipboardInfo -> clipboardHandler.setClipboard(message)
+                is ClipboardInfo -> clipboardFeature.setClipboard(message)
                 is FileTransferInfo -> fileTransferService.receiveFiles(device.deviceId, message)
                 is RingerModeState -> deviceControlHandler.handleRingerMode(message)
                 is DndState -> deviceControlHandler.handleDndStatus(message)
@@ -70,12 +66,10 @@ suspend fun NetworkService.handleMessage(device: BaseRemoteDevice, message: Sock
                 is AudioDeviceInfo -> remotePlaybackFeature.handleAudioDevice(device.deviceId, message)
                 is AudioStreamState -> deviceControlHandler.setStreamVolume(device.deviceId, message)
                 is ActionInfo -> actionFeature.addAction(device.deviceId, message)
+                is ActionList -> actionFeature.setActions(device.deviceId, message.actions)
                 is BatteryState -> remoteDeviceStatusFeature.updateBattery(device.deviceId, message)
                 is BluetoothPairingRequest -> bluetoothPairingHandler.handleBluetoothRequest(device.deviceId)
-                is BluetoothDeviceCatalogRequest -> bluetoothHandoffHandler.handleCatalogRequest(device.deviceId, message)
-                is BluetoothHandoffCommand -> bluetoothHandoffHandler.handleCommand(device.deviceId, message)
-                is BluetoothHandoffConfiguration -> bluetoothHandoffStore.updateConfiguration(message)
-                is BluetoothHandoffState -> bluetoothHandoffStore.updateState(message)
+                is PlaySound -> playSoundFeature.handle(device.deviceId, message)
                 else -> {}
             }
         }

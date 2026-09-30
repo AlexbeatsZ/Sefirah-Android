@@ -52,10 +52,7 @@ import kotlinx.coroutines.launch
 import sefirah.common.R
 import sefirah.common.util.DEFAULT_RECYCLE_BIN_PATH
 import sefirah.common.util.getReadablePathFromUri
-import sefirah.common.util.isXiaomiFamilyDevice
-import sefirah.common.util.openBackgroundConnectionSettings
 import sefirah.common.util.openAppSettings
-import sefirah.privileged.PrivilegedBridgeStatus
 
 @Composable
 fun SettingsScreen(
@@ -70,7 +67,8 @@ fun SettingsScreen(
     val storageLocation by viewModel.storageLocation.collectAsState()
     val recycleBinLocation by viewModel.recycleBinLocation.collectAsState()
     val localDevice by viewModel.localDevice.collectAsState()
-    val privilegedBridgeStatus by viewModel.privilegedBridgeStatus.collectAsState()
+    val showActionLabels by viewModel.showActionLabels.collectAsState()
+    val clipboardWorkerEnabled by viewModel.clipboardWorkerEnabled.collectAsState()
 
     // State for device name dialog
     var showDeviceNameDialog by remember { mutableStateOf(false) }
@@ -143,43 +141,6 @@ fun SettingsScreen(
         }
 
         item {
-            val batteryExempt = permissionStates.batteryGranted
-            val xiaomiFamily = isXiaomiFamilyDevice()
-            val subtitle = when {
-                xiaomiFamily && batteryExempt ->
-                    stringResource(R.string.background_connection_xiaomi_protected)
-                xiaomiFamily ->
-                    stringResource(R.string.background_connection_xiaomi_not_protected)
-                batteryExempt ->
-                    stringResource(R.string.background_connection_protected)
-                else ->
-                    stringResource(R.string.background_connection_not_protected)
-            }
-
-            TextPreferenceWidget(
-                title = stringResource(R.string.background_connection_protection),
-                subtitle = subtitle,
-                icon = ImageVector.vectorResource(R.drawable.ic_settings_alert_fill),
-                onPreferenceClick = { openBackgroundConnectionSettings(context) },
-            )
-        }
-
-        item {
-            TextPreferenceWidget(
-                title = stringResource(R.string.privileged_bluetooth_clipboard),
-                subtitle = when (privilegedBridgeStatus) {
-                    PrivilegedBridgeStatus.Ready -> stringResource(R.string.shizuku_connected)
-                    PrivilegedBridgeStatus.Binding -> stringResource(R.string.shizuku_connecting)
-                    PrivilegedBridgeStatus.PermissionRequired -> stringResource(R.string.shizuku_permission_required)
-                    PrivilegedBridgeStatus.Unavailable -> stringResource(R.string.shizuku_unavailable)
-                    PrivilegedBridgeStatus.Error -> stringResource(R.string.shizuku_connection_failed)
-                },
-                icon = ImageVector.vectorResource(R.drawable.ic_settings_alert_fill),
-                onPreferenceClick = viewModel::requestPrivilegedAccess,
-            )
-        }
-
-        item {
                 TextPreferenceWidget(
                     title = stringResource(R.string.permissions),
                     icon = ImageVector.vectorResource(R.drawable.ic_settings_alert_fill),
@@ -230,6 +191,28 @@ fun SettingsScreen(
         }
 
         item {
+            SwitchPreferenceWidget(
+                title = stringResource(R.string.show_action_labels_preference),
+                subtitle = stringResource(R.string.show_action_labels_subtitle),
+                icon = ImageVector.vectorResource(R.drawable.ic_apps),
+                checked = showActionLabels,
+                onCheckedChanged = viewModel::saveShowActionLabels,
+            )
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            item {
+                SwitchPreferenceWidget(
+                    title = stringResource(R.string.clipboard_worker_preference),
+                    subtitle = stringResource(R.string.clipboard_worker_subtitle),
+                    icon = ImageVector.vectorResource(R.drawable.ic_content_copy),
+                    checked = clipboardWorkerEnabled,
+                    onCheckedChanged = viewModel::saveClipboardWorkerEnabled,
+                )
+            }
+        }
+
+        item {
             HorizontalDivider()
         }
 
@@ -259,8 +242,8 @@ fun SettingsScreen(
             val crashLogUtil = remember { CrashLogUtil(context) }
             
             TextPreferenceWidget(
-                title = stringResource(R.string.dump_logs),
-                subtitle = stringResource(R.string.dump_logs_subtitle),
+                title = "Dump Logs",
+                subtitle = "Save diagnostic logs to your device",
                 icon = ImageVector.vectorResource(R.drawable.ic_bug_report_fill),
                 onPreferenceClick = {
                     scope.launch {
@@ -273,8 +256,8 @@ fun SettingsScreen(
         item {
             val activity = context as? Activity
             TextPreferenceWidget(
-                title = stringResource(R.string.stop_service_exit),
-                subtitle = stringResource(R.string.stop_service_exit_subtitle),
+                title = "Stop Service & Exit",
+                subtitle = "Disconnect all devices, stop the service, and close the application",
                 icon = ImageVector.vectorResource(R.drawable.ic_close),
                 onPreferenceClick = {
                     viewModel.stopService()

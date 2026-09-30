@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -86,10 +84,7 @@ fun DeviceSettingsScreen(
                 title = { Text(stringResource(R.string.device_settings)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            painterResource(R.drawable.ic_arrow_back),
-                            stringResource(R.string.back_button),
-                        )
+                        Icon(painterResource(R.drawable.ic_arrow_back), "Back")
                     }
                 },
                 actions = {
@@ -99,7 +94,7 @@ fun DeviceSettingsScreen(
                     }) {
                         Icon(
                             painter = painterResource(R.drawable.ic_delete_fill),
-                            contentDescription = stringResource(R.string.delete_device)
+                            contentDescription = "Delete Device"
                         )
                     }
                 }
@@ -234,7 +229,7 @@ fun DeviceSettingsScreen(
                     uncheckedIcon = ImageVector.vectorResource(R.drawable.ic_chat),
                     granted = permissionStates.smsPermissionGranted,
                     checked = preferences.messageSync && permissionStates.smsPermissionGranted,
-                    permission = Manifest.permission_group.SMS,
+                    permission = Manifest.permission.READ_SMS,
                     onRequest = { 
                         smsPermissionRequester.launch(
                             arrayOf(Manifest.permission.READ_SMS, Manifest.permission.SEND_SMS) 
@@ -282,6 +277,19 @@ fun DeviceSettingsScreen(
                         viewModel.saveCallLogSyncSettings(checked)
                     },
                     viewModel = viewModel
+                )
+            }
+
+            item {
+                SwitchPreferenceWidget(
+                    title = stringResource(R.string.play_sound),
+                    subtitle = stringResource(R.string.play_sound_preference_subtitle),
+                    checkedIcon = ImageVector.vectorResource(R.drawable.ic_volume_up_fill),
+                    uncheckedIcon = ImageVector.vectorResource(R.drawable.ic_volume_off_fill),
+                    checked = preferences.playSound,
+                    onCheckedChanged = { checked ->
+                        viewModel.savePlaySoundSettings(checked)
+                    },
                 )
             }
 
@@ -360,7 +368,7 @@ private fun DeviceAvatar(avatar: String?) {
     
     Image(
         painter = painter,
-        contentDescription = stringResource(R.string.profile_picture),
+        contentDescription = "Profile Picture",
         modifier = Modifier
             .size(100.dp)
             .clip(CircleShape)
@@ -410,7 +418,7 @@ private fun DeviceHeader(device: PairedDevice) {
             } else {
                 device.lastConnected?.let {
                     DeviceStatusInfo(
-                        icon = Icons.Default.AccessTime,
+                        icon = painterResource(R.drawable.ic_access_time),
                         text = convertTimestampToDate(it),
                         color = MaterialTheme.colorScheme.outline
                     )
@@ -432,31 +440,6 @@ private fun DeviceStatusInfo(
     ) {
         Icon(
             painter = icon,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = color
-        )
-        Spacer(Modifier.width(4.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = color
-        )
-    }
-}
-
-@Composable
-private fun DeviceStatusInfo(
-    icon: ImageVector,
-    text: String,
-    color: androidx.compose.ui.graphics.Color
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center
-    ) {
-        Icon(
-            imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(16.dp),
             tint = color

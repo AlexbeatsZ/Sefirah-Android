@@ -1,5 +1,6 @@
 package com.castle.sefirah.presentation.deeplink
 
+import android.app.AlertDialog
 import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
@@ -7,24 +8,16 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import dagger.hilt.android.AndroidEntryPoint
-import com.castle.sefirah.R
-import com.castle.sefirah.presentation.common.DeviceSelectionDialog
-import com.castle.sefirah.presentation.common.DeviceSelectionOption
-import com.castle.sefirah.ui.theme.SefirahTheme
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import sefirah.clipboard.ClipboardFeature
 import sefirah.domain.interfaces.DeviceManager
-import sefirah.domain.interfaces.NetworkManager
 import sefirah.domain.model.ClipboardInfo
 import sefirah.network.NetworkService
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class ShareDeepLinkActivity : ComponentActivity() {
-    @Inject lateinit var networkManager: NetworkManager
+    @Inject lateinit var clipboardFeature: ClipboardFeature
     @Inject lateinit var deviceManager: DeviceManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -75,9 +68,7 @@ class ShareDeepLinkActivity : ComponentActivity() {
 
         Log.d(TAG, "Handling text share: $text")
         if (!text.isNullOrEmpty()) {
-            CoroutineScope(Dispatchers.IO).launch {
-                networkManager.sendClipboardMessage(ClipboardInfo("text/plain", text))
-            }
+            clipboardFeature.sendClipboard(ClipboardInfo("text/plain", text))
         } 
         finishAffinity()
     }
@@ -147,19 +138,15 @@ class ShareDeepLinkActivity : ComponentActivity() {
             0 -> onSelected(null)
             1 -> onSelected(connectedDevices.first().deviceId)
             else -> {
-                setContent {
-                    SefirahTheme {
-                        DeviceSelectionDialog(
-                            title = getString(R.string.send_to_device),
-                            options = connectedDevices.map {
-                                DeviceSelectionOption(it.deviceId, it.deviceName)
-                            },
-                            cancelLabel = getString(R.string.cancel),
-                            onSelected = { onSelected(it.id) },
-                            onDismiss = ::finishAffinity,
-                        )
+                val deviceNames = connectedDevices.map { it.deviceName }
+                AlertDialog.Builder(this)
+                    .setTitle("Send to device")
+                    .setItems(deviceNames.toTypedArray()) { dialog, which ->
+                        onSelected(connectedDevices[which].deviceId)
                     }
-                }
+                    .setOnCancelListener {
+                        finishAffinity()
+                    }.show()
             }
         }
     }

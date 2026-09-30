@@ -29,7 +29,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.unit.dp
 import sefirah.common.R
@@ -65,7 +64,7 @@ fun VolumeSlider(
         IconButton(onClick = toggleMute) {
             Icon(
                 imageVector = if (isMuted) ImageVector.vectorResource(R.drawable.ic_volume_off_fill) else ImageVector.vectorResource(R.drawable.ic_volume_up_fill),
-                contentDescription = stringResource(R.string.volume),
+                contentDescription = "Volume Icon",
                 tint = MaterialTheme.colorScheme.surfaceTint,
                 modifier = Modifier.size(24.dp).padding(start = 0.dp)
             )

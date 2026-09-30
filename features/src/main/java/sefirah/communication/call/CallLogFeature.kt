@@ -21,9 +21,8 @@ class CallLogFeature @Inject constructor(
     override fun hasPermissions(): Boolean = isCallLogsPermissionGranted(context)
 
     override suspend fun onStart(deviceId: String) {
-        val callLogs = CallLogHelper.getCallLogs(context)
-        for (callLog in callLogs) {
-            if (!networkManager.sendMessageAwait(deviceId, callLog)) return
+        CallLogHelper.getCallLogs(context).forEach { callLog ->
+            networkManager.sendMessage(deviceId, callLog)
         }
     }
 }

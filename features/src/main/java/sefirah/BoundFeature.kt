@@ -1,7 +1,6 @@
 package sefirah
 
 import sefirah.domain.interfaces.DeviceManager
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Feature that resource bound by active devices
@@ -13,8 +12,8 @@ abstract class BoundFeature(
 
     protected abstract suspend fun onStop()
 
-    final override suspend fun enable(deviceId: String) = lifecycleMutex.withLock {
-        if (deviceId in enabledDevices) return@withLock
+    final override suspend fun enable(deviceId: String) {
+        if (deviceId in enabledDevices) return
         if (enabledDevices.isEmpty()) {
             onStart()
         }
@@ -22,8 +21,8 @@ abstract class BoundFeature(
         onStart(deviceId)
     }
 
-    final override suspend fun disable(deviceId: String) = lifecycleMutex.withLock {
-        if (deviceId !in enabledDevices) return@withLock
+    final override suspend fun disable(deviceId: String) {
+        if (deviceId !in enabledDevices) return
         enabledDevices.remove(deviceId)
         onStop(deviceId)
         if (enabledDevices.isEmpty()) {

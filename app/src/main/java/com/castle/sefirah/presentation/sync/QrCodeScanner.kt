@@ -16,8 +16,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -35,12 +33,12 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -89,7 +87,7 @@ fun QrCodeScanner(
         when {
             permissionDenied -> {
                 Text(
-                    text = stringResource(R.string.camera_permission_qr_required),
+                    text = "Camera permission is required to scan QR codes. Please grant permission in settings.",
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
@@ -121,8 +119,8 @@ fun QrCodeScanner(
                 .padding(16.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = stringResource(R.string.close),
+                painter = painterResource(R.drawable.ic_close),
+                contentDescription = "Close",
                 tint = MaterialTheme.colorScheme.onSurface
             )
         }

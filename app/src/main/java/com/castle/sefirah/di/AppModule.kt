@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import sefirah.Feature
 import sefirah.actions.ActionFeature
+import sefirah.clipboard.ClipboardFeature
 import sefirah.communication.call.CallLogFeature
 import sefirah.communication.call.CallStateFeature
 import sefirah.communication.sms.SmsFeature
@@ -31,6 +32,7 @@ import sefirah.media.RemotePlaybackFeature
 import sefirah.network.NetworkManagerImpl
 import sefirah.network.SocketFactoryImpl
 import sefirah.notification.NotificationFeature
+import sefirah.playsound.PlaySoundFeature
 import sefirah.status.RemoteDeviceStatusFeature
 import sefirah.storage.SftpFeature
 import javax.inject.Singleton
@@ -50,6 +52,10 @@ internal abstract class AppModule {
 
     @Binds
     abstract fun bindPreferencesRepository(impl: PreferencesRepositoryImpl): PreferencesRepository
+
+    @Binds
+    @IntoSet
+    abstract fun bindClipboardFeature(feature: ClipboardFeature): Feature
 
     @Binds
     @IntoSet
@@ -86,6 +92,10 @@ internal abstract class AppModule {
     @Binds
     @IntoSet
     abstract fun bindRemoteStatusFeature(feature: RemoteDeviceStatusFeature): Feature
+
+    @Binds
+    @IntoSet
+    abstract fun bindPlaySoundFeature(feature: PlaySoundFeature): Feature
 
     companion object {
         @Provides

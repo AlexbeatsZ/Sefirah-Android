@@ -1,77 +1,70 @@
-/*
- * Acknowledgment:
- * Portions of this code are adapted from XClipper by Kaustubh Patange.
- * Licensed under the Apache License 2.0.
- */
-
 package sefirah.clipboard
 
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.util.Log
+import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import sefirah.domain.interfaces.NetworkManager
-import sefirah.domain.interfaces.DeviceManager
-import sefirah.domain.model.ClipboardInfo
 import javax.inject.Inject
 
+/**
+ * Invisible activity that briefly takes focus so the app can read the clipboard on Android 10+
+ */
 @AndroidEntryPoint
 class ClipboardChangeActivity : FragmentActivity() {
-    @Inject lateinit var networkManager: NetworkManager
+    @Inject lateinit var clipboardFeature: ClipboardFeature
 
-    @Inject lateinit var deviceManager: DeviceManager
-
-    @Inject lateinit var clipboardEventTracker: ClipboardEventTracker
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        isRunning = true
+        setContentView(
+            View(this).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+                alpha = 0f
+            },
+        )
+        window.attributes = window.attributes.apply {
+            dimAmount = 0f
+            flags = flags or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+        }
+    }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
-        val clipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        lifecycleScope.launch {
-            /** Seems like adding a delay is giving [ClipboardManager] time to capture
-             *  clipboard text.
-             */
-            delay(250)
-            if (hasFocus) {
-                val data = clipboardManager.primaryClip
-                    ?.takeIf { it.itemCount > 0 }
-                    ?.getItemAt(0)
-                    ?.coerceToText(this@ClipboardChangeActivity)
-                    ?.toString()
-                val eventId = data?.let(clipboardEventTracker::recordLocalText)
-                if (data != null && eventId != null) {
-                    networkManager.sendClipboardMessage(
-                        ClipboardInfo(
-                            clipboardType = "text/plain",
-                            content = data,
-                            eventId = eventId,
-                            originDeviceId = deviceManager.localDevice.deviceId,
-                        ),
-                    )
-                }
-                finish()
-            }
-        }
         super.onWindowFocusChanged(hasFocus)
-    }
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
+        if (!hasFocus) return
 
-        onWindowFocusChanged(true)
+        lifecycleScope.launch {
+            clipboardFeature.sendPrimaryClipboard()
+            finish()
+        }
     }
 
     override fun onDestroy() {
+        isRunning = false
         super.onDestroy()
     }
 
     companion object {
-        fun launch(context: Context) = with(context) {
-            val intent = Intent(this, ClipboardChangeActivity::class.java)
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+        @Volatile
+        var isRunning: Boolean = false
+            private set
+
+        fun launch(context: Context) {
+            if (isRunning) return
+            val intent = Intent(context, ClipboardChangeActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
         }
     }
 }

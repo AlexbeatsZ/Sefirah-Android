@@ -169,7 +169,7 @@ class SmsFeature @Inject constructor(
     /**
      * Send all conversations (one message per thread)
      */
-    suspend fun sendAllConversations(deviceId: String?) {
+    fun sendAllConversations(deviceId: String?) {
         val targetDeviceIds = deviceId?.let { setOf(it) } ?: enabledDevices
         if (targetDeviceIds.isEmpty()) return
 
@@ -178,7 +178,7 @@ class SmsFeature @Inject constructor(
         val currentThreadIds = mutableSetOf<Long>()
         
         // For each conversation (already one message per thread from getConversations)
-        for (conversationInfo in conversations) {
+        conversations.forEach { conversationInfo ->
             val threadId = conversationInfo.message.threadID.threadID
             currentThreadIds.add(threadId)
             
@@ -191,7 +191,7 @@ class SmsFeature @Inject constructor(
                 recipients = conversationInfo.recipients,
                 messages = listOf(textMessage)
             )
-            if (!sendToDesktopAwait(conversation, targetDeviceIds)) return
+            sendToDesktop(conversation, targetDeviceIds)
         }
         
         // Store the current thread IDs for later comparison
@@ -232,16 +232,6 @@ class SmsFeature @Inject constructor(
         targetDeviceIds.forEach { deviceId ->
             networkManager.sendMessage(deviceId, conversation)
         }
-    }
-
-    private suspend fun sendToDesktopAwait(
-        conversation: ConversationInfo,
-        targetDeviceIds: Set<String>,
-    ): Boolean {
-        for (deviceId in targetDeviceIds) {
-            if (!networkManager.sendMessageAwait(deviceId, conversation)) return false
-        }
-        return true
     }
 
     fun sendTextMessage(message: TextMessage) {
