@@ -11,6 +11,7 @@ data class PairedDevice(
     val port: Int? = null,
     val connectionState: ConnectionState = ConnectionState.Disconnected(),
     val controls: DeviceControls? = null,
+    val presentation: DevicePresentation? = null,
 ) : BaseRemoteDevice() {
     
     /** Returns enabled addresses sorted by priority, or all addresses if none enabled */
@@ -29,7 +30,7 @@ data class PairedDevice(
         else -> deviceId == other.deviceId && deviceName == other.deviceName &&
             address == other.address && addresses == other.addresses && avatar == other.avatar &&
             lastConnected == other.lastConnected && connectionState == other.connectionState &&
-            controls == other.controls && port == other.port && (certificate.contentEquals(other.certificate))
+            controls == other.controls && presentation == other.presentation && port == other.port && (certificate.contentEquals(other.certificate))
     }
 
     override fun hashCode(): Int {
@@ -43,6 +44,7 @@ data class PairedDevice(
         result = 31 * result + (port ?: 0)
         result = 31 * result + certificate.contentHashCode()
         result = 31 * result + (controls?.hashCode() ?: 0)
+        result = 31 * result + (presentation?.hashCode() ?: 0)
         return result
     }
 }

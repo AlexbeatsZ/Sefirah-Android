@@ -236,4 +236,20 @@
     <string name="bluetooth_remote_confirmation">Open Sefirah on the target device to confirm.</string>
     <string name="device_control_pending">Waiting for the target device…</string>
     <string name="device_control_failed">The target device did not confirm this change.</string>
+    <string name="device_presentation_title">This device on other devices</string>
+    <string name="device_presentation_description">Choose its frame, orientation and preview. These settings do not rotate your screen.</string>
+    <string name="device_presentation_kind">Device type</string>
+    <string name="device_presentation_orientation">Display orientation</string>
+    <string name="device_presentation_ratio">Display ratio</string>
+    <string name="share_wallpaper_preview">Share a wallpaper preview with allowed paired devices</string>
+    <string name="choose_presentation_image">Choose a preview image</string>
+    <string name="use_system_wallpaper">Use system wallpaper</string>
+    <string name="share_wallpaper_with_device">Share this computer\'s wallpaper preview</string>
+    <string name="share_wallpaper_with_device_description">Also enable wallpaper sharing in General. Turning this off clears the preview on upgraded peers.</string>
+    <string name="presentation_unknown">Unknown device</string>
+    <string name="presentation_phone">Phone</string>
+    <string name="presentation_tablet">Tablet</string>
+    <string name="presentation_computer">Computer</string>
+    <string name="presentation_portrait">Portrait</string>
+    <string name="presentation_landscape">Landscape</string>
 </resources>

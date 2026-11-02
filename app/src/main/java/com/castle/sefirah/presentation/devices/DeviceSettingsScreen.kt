@@ -77,6 +77,7 @@ fun DeviceSettingsScreen(
 ) {
     val device by viewModel.device.collectAsState()
     val preferences by viewModel.preferences.collectAsState()
+    val shareWallpaper by viewModel.shareWallpaper.collectAsState()
     val permissionStates by viewModel.permissionStates.collectAsState()
 
     Scaffold(
@@ -167,6 +168,9 @@ fun DeviceSettingsScreen(
                         checked = preferences.allowRemoteDeviceControls,
                         onCheckedChanged = viewModel::saveRemoteDeviceControls
                     )
+                    SwitchPreferenceWidget(title = stringResource(R.string.share_wallpaper_with_device),
+                        subtitle = stringResource(R.string.share_wallpaper_with_device_description),
+                        checked = shareWallpaper, onCheckedChanged = viewModel::saveShareWallpaper)
                 }
                 
                 item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
@@ -405,7 +409,7 @@ private fun DeviceHeader(device: PairedDevice) {
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            DeviceAvatar(avatar = device.avatar)
+            com.castle.sefirah.presentation.common.components.DevicePreview(device = device)
 
             Spacer(Modifier.height(16.dp))
 

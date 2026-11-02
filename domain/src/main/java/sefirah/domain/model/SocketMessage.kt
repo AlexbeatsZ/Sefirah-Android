@@ -73,6 +73,8 @@ data class DeviceInfo(
     // Absent means no update; an explicit empty list clears known numbers.
     val phoneNumbers: List<PhoneNumber>? = null,
     val controls: DeviceControls? = null,
+    val presentation: DevicePresentation? = null,
+    val requestedWallpaperId: String? = null,
 ) : SocketMessage(), Parcelable
 
 @Serializable
