@@ -140,6 +140,7 @@
     <string name="bluetooth_confirmation">已配对设备请求更改蓝牙</string>
     <string name="bluetooth_confirmation_description">继续后进入 Android 蓝牙设置，操作可能断开耳机、键鼠和网络。</string>
     <string name="bluetooth_open_settings">继续</string>
+    <string name="remote_bluetooth">蓝牙</string>
     <string name="bluetooth_turn_off">关闭远端蓝牙</string>
     <string name="bluetooth_turn_on">开启远端蓝牙</string>
     <string name="bluetooth_control_unavailable">无法控制远端蓝牙，请检查远端授权。</string>

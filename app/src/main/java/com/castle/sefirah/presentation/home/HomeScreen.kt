@@ -1,14 +1,20 @@
 package com.castle.sefirah.presentation.home
 
+import android.bluetooth.BluetoothAdapter
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.SheetState
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -16,16 +22,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import com.castle.sefirah.presentation.home.components.AudioDeviceBottomSheet
+import com.castle.sefirah.presentation.home.components.BluetoothTileState
 import com.castle.sefirah.presentation.home.components.DeviceControlCard
 import com.castle.sefirah.presentation.home.components.MediaCard
 import com.castle.sefirah.presentation.home.components.SelectedAudioDevice
 import com.castle.sefirah.presentation.home.components.SwipeableDevicesCard
 import com.castle.sefirah.presentation.main.ConnectionViewModel
 import kotlinx.coroutines.launch
+import sefirah.common.R
 
 @Composable
 fun HomeScreen(
@@ -37,30 +47,29 @@ fun HomeScreen(
     val controlPeer by viewModel.selectedControlDevice.collectAsState()
     val controlNotice by viewModel.controlNotice.collectAsState()
     val bluetoothPrompt by viewModel.bluetoothPrompt.collectAsState()
-    val bluetoothContext = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     bluetoothPrompt?.let { prompt ->
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = viewModel.dismissBluetoothPrompt,
-            title = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(sefirah.common.R.string.bluetooth_confirmation)) },
-            text = { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(sefirah.common.R.string.bluetooth_confirmation_description)) },
+            title = { Text(stringResource(R.string.bluetooth_confirmation)) },
+            text = { Text(stringResource(R.string.bluetooth_confirmation_description)) },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
+                TextButton(onClick = {
                     bluetoothActionScope.launch {
                         if (!viewModel.confirmBluetoothPrompt(prompt)) return@launch
-                        val intent = if (prompt.enabled) android.content.Intent(android.bluetooth.BluetoothAdapter.ACTION_REQUEST_ENABLE)
-                            else android.content.Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS)
-                        runCatching { bluetoothContext.startActivity(intent) }
+                        val intent = if (prompt.enabled) Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                            else Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+                        runCatching { context.startActivity(intent) }
                     }
-                }) { androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(sefirah.common.R.string.bluetooth_open_settings)) }
+                }) { Text(stringResource(R.string.bluetooth_open_settings)) }
             },
             dismissButton = {
-                androidx.compose.material3.TextButton(onClick = viewModel.dismissBluetoothPrompt) {
-                    androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(android.R.string.cancel))
+                TextButton(onClick = viewModel.dismissBluetoothPrompt) {
+                    Text(stringResource(android.R.string.cancel))
                 }
             }
         )
     }
-
 
     val pairedDevicesList by connectionViewModel.pairedDevices.collectAsState()
 
@@ -117,37 +126,31 @@ fun HomeScreen(
                 }
 
 
-                controlPeer?.controls?.let { controls ->
-                    item(key = "bluetooth_control") {
-                        androidx.compose.material3.TextButton(
-                            enabled = controlPeer?.connectionState?.isConnected == true &&
-                                controls.bluetoothEnabled != null &&
-                                controls.bluetoothControl in listOf("direct", "local") &&
-                                controlNotice != "pending",
-                            onClick = viewModel::requestBluetooth
-                        ) {
-                            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(
-                                if (controls.bluetoothEnabled == true) sefirah.common.R.string.bluetooth_turn_off
-                                else sefirah.common.R.string.bluetooth_turn_on))
-                        }
-                        if (controls.bluetoothControl !in listOf("direct", "local"))
-                            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(sefirah.common.R.string.bluetooth_control_unavailable))
-                        controlNotice?.let { notice ->
-                            androidx.compose.material3.Text(androidx.compose.ui.res.stringResource(
-                                if (notice == "local") sefirah.common.R.string.bluetooth_remote_confirmation
-                                else if (notice == "pending") sefirah.common.R.string.device_control_pending
-                                else sefirah.common.R.string.device_control_failed))
-                        }
-                    }
+                val bluetoothTile = controlPeer?.controls?.takeIf { it.bluetoothControl != "unsupported" }?.let { controls ->
+                    val available = controlPeer?.connectionState?.isConnected == true &&
+                        controls.bluetoothControl in listOf("direct", "local")
+                    BluetoothTileState(
+                        enabled = controls.bluetoothEnabled,
+                        available = available && controls.bluetoothEnabled != null,
+                        pending = controlNotice == "pending",
+                        notice = when (controlNotice) {
+                            null -> null
+                            "local" -> R.string.bluetooth_remote_confirmation
+                            "pending" -> R.string.device_control_pending
+                            else -> R.string.device_control_failed
+                        },
+                    )
                 }
-                if (actions.isNotEmpty()) {
+                if (actions.isNotEmpty() || bluetoothTile != null) {
                     item(key = "device_control") {
                         DeviceControlCard(
                             actions = actions,
                             showLabels = showActionLabels,
                             onActionClick = { action ->
                                 viewModel.sendMessageToSelectedDevice(action)
-                            }
+                            },
+                            bluetooth = bluetoothTile,
+                            onBluetoothClick = viewModel::requestBluetooth,
                         )
                     }
                 }

@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -30,11 +32,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,16 +50,32 @@ import sefirah.presentation.components.Button
 import sefirah.presentation.components.TextButton
 
 
+/** Remote Bluetooth state rendered as a toggle tile next to the desktop actions. */
+data class BluetoothTileState(
+    val enabled: Boolean?,
+    val available: Boolean,
+    val pending: Boolean,
+    val notice: Int?,
+)
+
+private sealed interface ControlTile {
+    data object Bluetooth : ControlTile
+    data class Action(val action: ActionInfo) : ControlTile
+}
+
 @Composable
 fun DeviceControlCard(
     actions: List<ActionInfo>,
     onActionClick: (ActionInfo) -> Unit,
     modifier: Modifier = Modifier,
     showLabels: Boolean = true,
+    bluetooth: BluetoothTileState? = null,
+    onBluetoothClick: () -> Unit = {},
 ) {
     var showDialog by remember { mutableStateOf(false) }
     var selectedAction by remember { mutableStateOf<ActionInfo?>(null) }
     var expanded by remember { mutableStateOf(false) }
+    var showUnavailable by remember(bluetooth?.available) { mutableStateOf(false) }
 
     if (showDialog && selectedAction != null) {
         ActionConfirmationDialog(
@@ -72,6 +92,21 @@ fun DeviceControlCard(
         )
     }
 
+    val tiles = buildList {
+        if (bluetooth != null) add(ControlTile.Bluetooth)
+        actions.forEach { add(ControlTile.Action(it)) }
+    }
+    // Keep a single row for up to five tiles, balance six to eight tiles into two rows
+    // (3x2 / 4x2), and only collapse longer lists behind the expand arrow.
+    val columns = when {
+        tiles.size <= 5 -> 5
+        tiles.size == 6 -> 3
+        tiles.size <= 8 -> 4
+        else -> 5
+    }
+    val collapsible = tiles.size > 8
+    val notice = bluetooth?.notice ?: if (showUnavailable) R.string.bluetooth_control_unavailable else null
+
     Card(
         modifier = modifier.fillMaxWidth()
     ) {
@@ -79,40 +114,51 @@ fun DeviceControlCard(
             modifier = Modifier.animateContentSize()
         ) {
             Column(
-                modifier = Modifier.padding(top = 16.dp, bottom = if (actions.size > 5) 0.dp else 16.dp),
+                modifier = Modifier.padding(top = 16.dp, bottom = if (collapsible || notice != null) 0.dp else 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val itemsToShow = if (expanded || actions.size <= 5) actions else actions.take(5)
-                itemsToShow.chunked(5).forEach { rowActions ->
+                val itemsToShow = if (expanded || !collapsible) tiles else tiles.take(columns)
+                itemsToShow.chunked(columns).forEach { rowTiles ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 8.dp)
                     ) {
-                        for (i in 0 until 5) {
+                        for (i in 0 until columns) {
                             Box(
                                 modifier = Modifier.weight(1f),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (i < rowActions.size) {
-                                    val action = rowActions[i]
-                                    val customBitmap = remember(action.actionId, action.icon) {
-                                        decodeIconIfCustom(action.icon)
-                                    }
-                                    DeviceControlButton(
-                                        iconRes = if (customBitmap == null) iconResForAction(action.icon) else null,
-                                        iconBitmap = customBitmap,
-                                        name = action.actionName,
+                                when (val tile = rowTiles.getOrNull(i)) {
+                                    null -> Unit
+                                    ControlTile.Bluetooth -> BluetoothControlButton(
+                                        state = bluetooth!!,
                                         showLabel = showLabels,
                                         onClick = {
-                                            if (action.askForConfirmation) {
-                                                selectedAction = action
-                                                showDialog = true
-                                            } else {
-                                                onActionClick(action)
-                                            }
+                                            if (bluetooth.available) onBluetoothClick()
+                                            else showUnavailable = true
                                         },
                                     )
+                                    is ControlTile.Action -> {
+                                        val action = tile.action
+                                        val customBitmap = remember(action.actionId, action.icon) {
+                                            decodeIconIfCustom(action.icon)
+                                        }
+                                        DeviceControlButton(
+                                            iconRes = if (customBitmap == null) iconResForAction(action.icon) else null,
+                                            iconBitmap = customBitmap,
+                                            name = action.actionName,
+                                            showLabel = showLabels,
+                                            onClick = {
+                                                if (action.askForConfirmation) {
+                                                    selectedAction = action
+                                                    showDialog = true
+                                                } else {
+                                                    onActionClick(action)
+                                                }
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -120,7 +166,19 @@ fun DeviceControlCard(
                 }
             }
 
-            if (actions.size > 5) {
+            if (notice != null) {
+                Text(
+                    text = stringResource(notice),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = if (collapsible) 0.dp else 12.dp),
+                )
+            }
+
+            if (collapsible) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -143,6 +201,31 @@ fun DeviceControlCard(
     }
 }
 
+@Composable
+private fun BluetoothControlButton(
+    state: BluetoothTileState,
+    showLabel: Boolean,
+    onClick: () -> Unit,
+) {
+    val label = stringResource(R.string.remote_bluetooth)
+    val description = stringResource(
+        when (state.enabled) {
+            true -> R.string.bluetooth_turn_off
+            false -> R.string.bluetooth_turn_on
+            null -> R.string.remote_bluetooth
+        }
+    )
+    DeviceControlButton(
+        name = label,
+        description = description,
+        iconRes = R.drawable.ic_bluetooth,
+        showLabel = showLabel,
+        active = state.enabled == true,
+        dimmed = !state.available || state.enabled == null || state.pending,
+        onClick = if (state.pending) null else onClick,
+    )
+}
+
 private fun decodeIconIfCustom(icon: String?): ImageBitmap? {
     // Built-in Fluent Names are short; custom icons arrive as base64.
     if (icon.isNullOrBlank() || icon.length < 64) return null
@@ -155,16 +238,21 @@ private fun decodeIconIfCustom(icon: String?): ImageBitmap? {
 @Composable
 fun DeviceControlButton(
     name: String,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     iconRes: Int? = null,
     iconBitmap: ImageBitmap? = null,
     showLabel: Boolean = true,
     color: Color = MaterialTheme.colorScheme.primary,
+    description: String = name,
+    active: Boolean = false,
+    dimmed: Boolean = false,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
+    val tint = if (active) MaterialTheme.colorScheme.onPrimary else color
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (dimmed) 0.38f else 1f)
             .padding(horizontal = 2.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -172,30 +260,29 @@ fun DeviceControlButton(
         Box(
             modifier = Modifier
                 .size(40.dp)
+                .then(
+                    if (active) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape)
+                    else Modifier
+                )
                 .clickable(
+                    enabled = onClick != null,
                     interactionSource = interactionSource,
                     indication = ripple(bounded = false, radius = 20.dp),
-                    onClick = onClick,
+                    onClick = { onClick?.invoke() },
                 ),
             contentAlignment = Alignment.Center,
         ) {
             when {
                 iconBitmap != null -> Image(
                     bitmap = iconBitmap,
-                    contentDescription = name,
+                    contentDescription = description,
                     modifier = Modifier.size(24.dp),
                     contentScale = ContentScale.Fit
                 )
-                iconRes != null -> Icon(
-                    painter = painterResource(iconRes),
-                    contentDescription = name,
-                    tint = color,
-                    modifier = Modifier.size(24.dp),
-                )
                 else -> Icon(
-                    painter = painterResource(iconResForAction(null)),
-                    contentDescription = name,
-                    tint = color,
+                    painter = painterResource(iconRes ?: iconResForAction(null)),
+                    contentDescription = description,
+                    tint = tint,
                     modifier = Modifier.size(24.dp),
                 )
             }
@@ -210,9 +297,10 @@ fun DeviceControlButton(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable(
+                        enabled = onClick != null,
                         interactionSource = interactionSource,
                         indication = null,
-                        onClick = onClick,
+                        onClick = { onClick?.invoke() },
                     ),
             )
         }

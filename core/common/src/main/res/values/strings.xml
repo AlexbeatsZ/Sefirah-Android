@@ -235,6 +235,7 @@
     <string name="bluetooth_confirmation">A paired device requested a Bluetooth change</string>
     <string name="bluetooth_confirmation_description">Continue to Android Bluetooth settings. This can disconnect headphones, keyboards and network connections.</string>
     <string name="bluetooth_open_settings">Continue</string>
+    <string name="remote_bluetooth">Bluetooth</string>
     <string name="bluetooth_turn_off">Turn Bluetooth off</string>
     <string name="bluetooth_turn_on">Turn Bluetooth on</string>
     <string name="bluetooth_control_unavailable">Bluetooth control unavailable. Check permissions on the target.</string>
