@@ -100,6 +100,7 @@ class ManagementProvider : ContentProvider() {
             .put("deviceId", local.deviceId).put("deviceName", local.deviceName)
             .put("version", com.castle.sefirah.BuildConfig.VERSION_NAME)
             .put("rootClipboardStatus", entry.workers().rootStatus.value.name)
+            .put("storageLocation", entry.preferences().getStorageLocation().first())
             .put("paired", JSONArray(devices.pairedDevices.value.map { peer ->
                 JSONObject().put("deviceId", peer.deviceId).put("deviceName", peer.deviceName)
                     .put("connected", peer.connectionState.isConnected).put("address", peer.address)

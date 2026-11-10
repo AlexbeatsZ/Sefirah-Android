@@ -73,6 +73,10 @@
             android:authorities="${applicationId}.management"
             android:exported="true"
             android:permission="android.permission.DUMP" />
+        <activity
+            android:name=".management.StoragePickerActivity"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
 
         <activity
             android:name=".MainActivity"
