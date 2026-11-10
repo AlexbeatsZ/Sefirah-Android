@@ -31,11 +31,14 @@ public final class WorkerService extends IWorkerService.Stub {
     static final String HOST_PACKAGE = "com.castle.sefirah";
     private static final String METHOD_SEND_BINDER = "sendBinder";
     private static final String EXTRA_BINDER = "sefirah.intent.extra.BINDER";
+    private static final String EXTRA_ROOT_TOKEN = "sefirah.worker.ROOT_TOKEN";
+    private static final String ROOT_TOKEN_PREFIX = "--root-token=";
     private static final long HOST_GONE_RECHECK_MS = 10_000;
 
     private final Context context;
     private final Handler mainHandler;
     private final ClipboardListener clipboard;
+    private final String rootToken;
 
     private volatile IHostBridge hostBridge;
     private boolean registering;
@@ -57,22 +60,27 @@ public final class WorkerService extends IWorkerService.Stub {
             return;
         }
 
-        WorkerService service = new WorkerService(shellContext, mainHandler);
+        String rootToken = args.length == 1 && args[0].startsWith(ROOT_TOKEN_PREFIX)
+                ? args[0].substring(ROOT_TOKEN_PREFIX.length()) : null;
+        WorkerService service = new WorkerService(shellContext, mainHandler, rootToken);
         mainHandler.post(service::start);
         Looper.loop();
         throw new RuntimeException("Main looper unexpectedly quit");
     }
 
-    private WorkerService(Context context, Handler mainHandler) {
+    private WorkerService(Context context, Handler mainHandler, String rootToken) {
         this.context = context;
         this.mainHandler = mainHandler;
         this.clipboard = new ClipboardListener();
+        this.rootToken = rootToken;
     }
 
     private void start() {
-        ApplicationInfo host = GetHostAppInfo();
-        hostObserver = new HostObserver(host.uid);
-        hostObserver.start();
+        if (rootToken == null) {
+            ApplicationInfo host = GetHostAppInfo();
+            hostObserver = new HostObserver(host.uid);
+            hostObserver.start();
+        }
         bind();
     }
 
@@ -108,6 +116,9 @@ public final class WorkerService extends IWorkerService.Stub {
         try {
             Bundle extras = new Bundle();
             extras.putBinder(EXTRA_BINDER, this);
+            if (rootToken != null) {
+                extras.putString(EXTRA_ROOT_TOKEN, rootToken);
+            }
 
             Bundle result = ContentProviders.call(METHOD_SEND_BINDER, null, extras);
             if (result == null) {
@@ -126,6 +137,7 @@ public final class WorkerService extends IWorkerService.Stub {
                 bridgeBinder.linkToDeath(() -> mainHandler.post(this::disconnect), 0);
             } catch (RemoteException e) {
                 Ln.w("linkToDeath failed", e);
+                disconnect();
             }
         } catch (SecurityException e) {
             Ln.w("Registration auth failed", e);
@@ -133,6 +145,9 @@ public final class WorkerService extends IWorkerService.Stub {
             Ln.w("register via ContentProvider failed", e);
         } finally {
             registering = false;
+            if (rootToken != null && !isConnected()) {
+                System.exit(1);
+            }
         }
     }
 
@@ -147,6 +162,9 @@ public final class WorkerService extends IWorkerService.Stub {
     private void disconnect() {
         hostBridge = null;
         clipboard.stopWatching();
+        if (rootToken != null) {
+            System.exit(0);
+        }
     }
 
     private void reportClipboardText(String text) {

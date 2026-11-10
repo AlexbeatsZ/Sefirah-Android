@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import sefirah.clipboard.ClipboardAccessibilityService
 import sefirah.worker.ShizukuHelper
+import sefirah.worker.WorkerManager
 import sefirah.common.util.PermissionStates
 import sefirah.common.util.checkBatteryOptimization
 import sefirah.common.util.checkLocationPermissions
@@ -49,6 +50,7 @@ class SettingsViewModel @Inject constructor(
     private val networkManager: NetworkManager,
     networkDiscovery: NetworkDiscovery,
     deviceManager: DeviceManager,
+    workerManager: WorkerManager,
     application: Application
 ) : AndroidViewModel(application) {
     val localDevice: StateFlow<LocalDevice?> = deviceManager.localDeviceFlow
@@ -68,6 +70,10 @@ class SettingsViewModel @Inject constructor(
     val clipboardWorkerEnabled: StateFlow<Boolean> = preferencesRepository
         .readClipboardWorkerEnabled()
         .stateIn(viewModelScope, SharingStarted.Lazily, true)
+
+    val rootClipboardEnabled = preferencesRepository.readRootClipboardEnabled()
+        .stateIn(viewModelScope, SharingStarted.Lazily, false)
+    val rootClipboardStatus = workerManager.rootStatus
 
     private val _storageLocation = MutableStateFlow("")
     val storageLocation: StateFlow<String> = _storageLocation
@@ -216,6 +222,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             preferencesRepository.saveClipboardWorkerEnabled(enabled)
         }
+    }
+
+    fun saveRootClipboardEnabled(enabled: Boolean) {
+        viewModelScope.launch { preferencesRepository.saveRootClipboardEnabled(enabled) }
     }
 
     /**

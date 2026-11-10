@@ -74,6 +74,11 @@ class NetworkManagerImpl @Inject constructor(
         networkService?.approveDeviceConnection(deviceId)
     }
 
+    override suspend fun pairDevice(deviceId: String, verificationCode: String, approve: Boolean) {
+        checkNotNull(networkService) { "Network service is not bound; start it first" }
+            .pairDevice(deviceId, verificationCode, approve)
+    }
+
     override suspend fun rejectDeviceConnection(deviceId: String) {
         networkService?.rejectDeviceConnection(deviceId)
     }

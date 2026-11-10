@@ -53,6 +53,7 @@ import sefirah.common.R
 import sefirah.common.util.DEFAULT_RECYCLE_BIN_PATH
 import sefirah.common.util.getReadablePathFromUri
 import sefirah.common.util.openAppSettings
+import sefirah.worker.WorkerManager
 
 @Composable
 fun SettingsScreen(
@@ -69,6 +70,8 @@ fun SettingsScreen(
     val localDevice by viewModel.localDevice.collectAsState()
     val showActionLabels by viewModel.showActionLabels.collectAsState()
     val clipboardWorkerEnabled by viewModel.clipboardWorkerEnabled.collectAsState()
+    val rootClipboardEnabled by viewModel.rootClipboardEnabled.collectAsState()
+    val rootClipboardStatus by viewModel.rootClipboardStatus.collectAsState()
 
     // State for device name dialog
     var showDeviceNameDialog by remember { mutableStateOf(false) }
@@ -209,6 +212,23 @@ fun SettingsScreen(
                     checked = clipboardWorkerEnabled,
                     onCheckedChanged = viewModel::saveClipboardWorkerEnabled,
                 )
+            }
+            if (clipboardWorkerEnabled) {
+                item {
+                    val subtitle = when (rootClipboardStatus) {
+                        WorkerManager.RootStatus.Idle -> R.string.root_clipboard_subtitle
+                        WorkerManager.RootStatus.Starting -> R.string.root_clipboard_starting
+                        WorkerManager.RootStatus.Ready -> R.string.root_clipboard_ready
+                        WorkerManager.RootStatus.Unavailable -> R.string.root_clipboard_unavailable
+                    }
+                    SwitchPreferenceWidget(
+                        title = stringResource(R.string.root_clipboard_preference),
+                        subtitle = stringResource(subtitle),
+                        icon = ImageVector.vectorResource(R.drawable.ic_content_copy),
+                        checked = rootClipboardEnabled,
+                        onCheckedChanged = viewModel::saveRootClipboardEnabled,
+                    )
+                }
             }
         }
 

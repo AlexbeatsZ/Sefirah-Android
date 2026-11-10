@@ -68,6 +68,11 @@
         android:theme="@style/Theme.Sefirah"
         android:enableOnBackInvokedCallback="true"
         tools:ignore="UnusedAttribute">
+        <provider
+            android:name=".management.ManagementProvider"
+            android:authorities="${applicationId}.management"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
 
         <activity
             android:name=".MainActivity"

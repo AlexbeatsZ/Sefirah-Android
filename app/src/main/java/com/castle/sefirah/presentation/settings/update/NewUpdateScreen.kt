@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -90,14 +89,10 @@ fun NewUpdateScreen(
     Scaffold(
         bottomBar = {
             UpdateBottomBar(
-                selectedTab = selectedTab,
-                onPlayStoreClick = {
-                    uriHandler.openUri(ReleaseRepository.PLAY_STORE_URL)
-                },
                 onGithubClick = {
                     val url = latestRelease?.releaseLink
                         ?: when (selectedTab) {
-                            UpdateTab.Android -> "https://github.com/shrimqy/Sefirah-Android/releases"
+                            UpdateTab.Android -> ReleaseRepository.ANDROID_RELEASES_URL
                             UpdateTab.Desktop -> "https://github.com/shrimqy/Sefirah/releases"
                         }
                     uriHandler.openUri(url)
@@ -294,8 +289,6 @@ private fun formatReleaseDate(publishedAt: String?): String? {
 
 @Composable
 private fun UpdateBottomBar(
-    selectedTab: UpdateTab,
-    onPlayStoreClick: () -> Unit,
     onGithubClick: () -> Unit,
 ) {
     val strokeWidth = Dp.Hairline
@@ -318,14 +311,6 @@ private fun UpdateBottomBar(
             ),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.padding.extraSmall),
     ) {
-        if (selectedTab == UpdateTab.Android) {
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onPlayStoreClick,
-            ) {
-                Text(text = stringResource(R.string.update_check_play_store))
-            }
-        }
         OutlinedButton(
             modifier = Modifier.fillMaxWidth(),
             onClick = onGithubClick,

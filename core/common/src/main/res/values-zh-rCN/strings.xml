@@ -75,6 +75,13 @@
     <string name="windows_app_button">Windows APP</string>
     <string name="clipboard_sync_preference">与PC同步剪贴板</string>
     <string name="clipboard_sync_subtitle">[需要无障碍权限] 检测并将剪贴板内容同步至桌面端</string>
+    <string name="clipboard_worker_preference">自动检测剪贴板</string>
+    <string name="clipboard_worker_subtitle">在 Android 10 及以上版本后台检测剪贴板变化。</string>
+    <string name="root_clipboard_preference">优先使用 Root 同步剪贴板</string>
+    <string name="root_clipboard_subtitle">配对设备连接时使用 Root 启动剪贴板监控。请在 Root 管理器中授权 Sefirah。</string>
+    <string name="root_clipboard_starting">正在启动剪贴板监控，请查看 Root 管理器是否请求授权。</string>
+    <string name="root_clipboard_ready">已通过 Root 启动剪贴板监控进程。</string>
+    <string name="root_clipboard_unavailable">Root 剪贴板监控不可用。请检查 Root 授权，再重新开关此设置以重试。</string>
     <string name="image_clipboard_preference">将接收的图片添加至剪贴板</string>
     <string name="image_clipboard_subtitle">将接收的图片将被复制至剪贴板</string>
     <string name="notification_sync_preference">同步通知</string>

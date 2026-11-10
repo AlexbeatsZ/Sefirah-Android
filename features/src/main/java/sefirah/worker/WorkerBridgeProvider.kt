@@ -4,6 +4,7 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.database.Cursor
 import android.net.Uri
+import android.os.Binder
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.util.Log
@@ -23,12 +24,12 @@ class WorkerBridgeProvider : ContentProvider() {
 
     private val hostBridge = object : IHostBridge.Stub() {
         override fun onClipboardText(text: String?) {
-            if (text.isNullOrEmpty()) return
+            if (text.isNullOrEmpty() || !isActiveWorker()) return
             clipboardFeature.onWorkerClipboardText(text)
         }
 
         override fun onClipboardImage(mimeType: String?, fd: ParcelFileDescriptor?) {
-            if (mimeType.isNullOrEmpty() || fd == null) {
+            if (mimeType.isNullOrEmpty() || fd == null || !isActiveWorker()) {
                 try {
                     fd?.close()
                 } catch (_: Exception) {
@@ -38,6 +39,9 @@ class WorkerBridgeProvider : ContentProvider() {
             clipboardFeature.onWorkerClipboardImage(mimeType, fd)
         }
     }
+
+    private fun isActiveWorker() =
+        workerManager.isActiveWorker(Binder.getCallingUid(), Binder.getCallingPid())
 
     override fun onCreate(): Boolean {
         val entry = EntryPointAccessors.fromApplication(
@@ -53,12 +57,17 @@ class WorkerBridgeProvider : ContentProvider() {
         if (method != METHOD_SEND_BINDER) {
             return null
         }
+        val uid = Binder.getCallingUid()
+        if (uid != WorkerManager.SHELL_UID && uid != 0) return null
         val workerBinder = extras?.getBinder(EXTRA_BINDER)
         if (workerBinder == null) {
             Log.w(TAG, "sendBinder missing binder")
             return null
         }
-        workerManager.registerWorker(workerBinder)
+        val token = extras.getString(EXTRA_ROOT_TOKEN)
+        if (!workerManager.registerWorker(workerBinder, uid, Binder.getCallingPid(), token)) {
+            return null
+        }
         return Bundle().apply {
             putBinder(EXTRA_BINDER, hostBridge.asBinder())
         }
@@ -96,5 +105,6 @@ class WorkerBridgeProvider : ContentProvider() {
         private const val TAG = "WorkerBridge"
         private const val METHOD_SEND_BINDER = "sendBinder"
         private const val EXTRA_BINDER = "sefirah.intent.extra.BINDER"
+        private const val EXTRA_ROOT_TOKEN = "sefirah.worker.ROOT_TOKEN"
     }
 }

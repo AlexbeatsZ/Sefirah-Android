@@ -75,8 +75,8 @@ Support for Linux is limited. Some features available on Windows may not be avai
    - To automatically share the clipboard **from Android to desktop** on Android 10+:
      1. Enable **Clipboard sync** preference in the device settings.
      2. Enable **Auto-detect clipboard** in the app Settings page.
-     3. Prefer granting **Shizuku** access, or keep the device connected over **ADB** from the desktop app. The app prefers Shizuku when available and falls back to ADB.
-     4. Accessibility remains a fallback when Shizuku/ADB are unavailable and you have granted accessibility permission, but it may not work in every scenario.
+     3. On a rooted phone, allow Sefirah in your root manager and turn on **Prefer root for clipboard sync**. Shizuku and desktop ADB are optional in this mode.
+     4. If root is disabled or unavailable, the app tries **Shizuku**, then requests a worker over desktop **ADB** when Shizuku is unavailable. Accessibility can detect some changes if you have enabled it.
    - To manually share the clipboard, use the persistent device status notification, the Quick Settings tile, or the share sheet.
 3. **File Transfer**:
    - Use the share sheet on your Android or Windows device and select the app to share files between the devices.

@@ -120,7 +120,12 @@
     <string name="clipboard_sync_preference">Sync clipboard with desktop</string>
     <string name="clipboard_sync_subtitle">Send clipboard content to this device when you copy on your phone</string>
     <string name="clipboard_worker_preference">Auto-detect clipboard</string>
-    <string name="clipboard_worker_subtitle">Auto-detect clipboard changes on Android 10+ via Shizuku or desktop ADB.</string>
+    <string name="clipboard_worker_subtitle">Detect clipboard changes in the background on Android 10 or later.</string>
+    <string name="root_clipboard_preference">Prefer root for clipboard sync</string>
+    <string name="root_clipboard_subtitle">Uses root to start clipboard monitoring when a paired device connects. Allow Sefirah in your root manager.</string>
+    <string name="root_clipboard_starting">Starting clipboard monitoring. Check your root manager for a permission request.</string>
+    <string name="root_clipboard_ready">Clipboard monitor started using root.</string>
+    <string name="root_clipboard_unavailable">Root clipboard monitor unavailable. Check access in your root manager and toggle this setting to retry.</string>
     <string name="image_clipboard_preference">Add received Images to clipboard</string>
     <string name="image_clipboard_subtitle">Copies the receiving image files to your clipboard</string>
     <string name="notification_sync_preference">Sync notifications</string>

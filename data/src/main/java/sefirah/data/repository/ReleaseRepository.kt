@@ -58,7 +58,7 @@ class ReleaseRepository @Inject constructor(
         val androidDeferred = async { fetchGithubReleases(ANDROID_REPO) }
         val desktopDeferred = async { fetchGithubReleases(DESKTOP_REPO) }
 
-        val androidReleases = androidDeferred.await()
+        val androidReleases = androidDeferred.await().filter { FORK_VERSION.matches(it.version) }
         val desktopReleases = desktopDeferred.await()
         val latestAndroid = androidReleases.firstOrNull()
 
@@ -125,11 +125,11 @@ class ReleaseRepository @Inject constructor(
 
     companion object {
         private const val TAG = "ReleaseRepository"
-        private const val ANDROID_REPO = "shrimqy/Sefirah-Android"
+        private const val ANDROID_REPO = "AlexbeatsZ/Sefirah-Android"
         private const val DESKTOP_REPO = "shrimqy/Sefirah"
         private const val RELEASES_PER_PAGE = 10
+        private val FORK_VERSION = Regex("""v?\d+\.\d+\.\d+(?:\.\d+)?""")
 
-        const val PLAY_STORE_URL =
-            "https://play.google.com/store/apps/details?id=com.castle.sefirah"
+        const val ANDROID_RELEASES_URL = "https://github.com/$ANDROID_REPO/releases"
     }
 }

@@ -13,8 +13,11 @@ import dagger.Lazy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import sefirah.Feature
 import sefirah.common.util.createTempFile
@@ -44,6 +47,11 @@ class ClipboardFeature @Inject constructor(
 ) : Feature(deviceManager) {
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val workerSettings = combine(
+        preferencesRepository.readClipboardWorkerEnabled(),
+        preferencesRepository.readRootClipboardEnabled(),
+        ::Pair,
+    ).distinctUntilChanged()
 
     private val clipChangedListener = ClipboardManager.OnPrimaryClipChangedListener {
         scope.launch { sendPrimaryClipboard() }
@@ -52,8 +60,8 @@ class ClipboardFeature @Inject constructor(
     init {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             scope.launch {
-                preferencesRepository.readClipboardWorkerEnabled().collect {
-                    applyWorkerState(it)
+                workerSettings.collect { (enabled, preferRoot) ->
+                    lifecycleMutex.withLock { applyWorkerState(enabled, preferRoot) }
                 }
             }
         }
@@ -74,7 +82,8 @@ class ClipboardFeature @Inject constructor(
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             clipboardManager.addPrimaryClipChangedListener(clipChangedListener)
         } else {
-            applyWorkerState(preferencesRepository.readClipboardWorkerEnabled().first())
+            val (enabled, preferRoot) = workerSettings.first()
+            applyWorkerState(enabled, preferRoot)
         }
     }
 
@@ -82,20 +91,14 @@ class ClipboardFeature @Inject constructor(
         if (enabledDevices.isNotEmpty()) return
         clipboardManager.removePrimaryClipChangedListener(clipChangedListener)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            workerManager.stopClipboardWatcher()
+            workerManager.updateClipboardWatcher(false)
         }
     }
 
     /** Worker runs only when sync is active for a device and the worker pref is on. */
-    private fun applyWorkerState(workerSync: Boolean) {
+    private fun applyWorkerState(workerSync: Boolean, preferRoot: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-        scope.launch {
-            if (enabledDevices.isNotEmpty() && workerSync) {
-                workerManager.startClipboardWatcher()
-            } else {
-                workerManager.stopClipboardWatcher()
-            }
-        }
+        workerManager.updateClipboardWatcher(enabledDevices.isNotEmpty() && workerSync, preferRoot)
     }
 
     fun onWorkerClipboardText(text: String) {

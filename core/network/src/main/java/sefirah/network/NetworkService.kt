@@ -782,6 +782,19 @@ class NetworkService : Service() {
         }
     }
 
+    suspend fun pairDevice(deviceId: String, verificationCode: String, approve: Boolean) {
+        val peer = requireNotNull(deviceManager.getDiscoveredDevice(deviceId)) { "Device is not discovered" }
+        require(peer.verificationCode == verificationCode) { "Verification code mismatch" }
+        if (approve) {
+            val pending = deviceManager.pendingDeviceApproval.value
+            require(pending?.deviceId == deviceId && pending.verificationCode == verificationCode) { "No matching pending request" }
+            approveDeviceConnection(deviceId)
+        } else {
+            deviceManager.addOrUpdateDiscoveredDevice(peer.copy(isPairing = true))
+            check(sendMessage(deviceId, PairMessage(true))) { "No live connection" }
+        }
+    }
+
     suspend fun approveDeviceConnection(deviceId: String) {
         clearPendingApproval(deviceId)
         cancelPairingVerificationNotification(deviceId)

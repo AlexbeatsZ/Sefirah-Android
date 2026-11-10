@@ -2,11 +2,15 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <limits.h>
+#include <linux/capability.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/prctl.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #define perrorf(...) fprintf(stderr, __VA_ARGS__)
@@ -19,9 +23,13 @@
 #define EXIT_FATAL_KILL 9
 
 #define SERVER_NAME "sefirah_worker"
+#define ROOT_SERVER_NAME "sefirah_root_clipboard"
 #define SERVER_CLASS_PATH "sefirah.worker.WorkerService"
+#define SHELL_ID 2000
+#define ROOT_TOKEN_PREFIX "--root-token="
 
-static void run_server(const char *apk_path, const char *main_class, const char *process_name) {
+static void run_server(const char *apk_path, const char *main_class, const char *process_name,
+                       const char *root_token) {
     if (setenv("CLASSPATH", apk_path, 1) != 0) {
         perrorf("fatal: can't set CLASSPATH\n");
         exit(EXIT_FATAL_SET_CLASSPATH);
@@ -39,6 +47,7 @@ static void run_server(const char *apk_path, const char *main_class, const char 
             "/system/bin",
             nice_name,
             (char *) main_class,
+            (char *) root_token,
             NULL,
     };
 
@@ -47,7 +56,8 @@ static void run_server(const char *apk_path, const char *main_class, const char 
     exit(EXIT_FATAL_APP_PROCESS);
 }
 
-static void start_server(const char *path, const char *main_class, const char *process_name) {
+static void start_server(const char *path, const char *main_class, const char *process_name,
+                         const char *root_token) {
     int fds[2];
     if (pipe(fds) < 0) {
         perrorf("fatal: can't create pipe\n");
@@ -75,7 +85,7 @@ static void start_server(const char *path, const char *main_class, const char *p
             char ready = 1;
             write(fds[1], &ready, 1);
             close(fds[1]);
-            run_server(path, main_class, process_name);
+            run_server(path, main_class, process_name, root_token);
         }
         default: {
             close(fds[1]);
@@ -107,11 +117,29 @@ static void kill_old_server_cb(pid_t pid) {
     }
 }
 
+static void drop_to_shell(void) {
+    struct __user_cap_header_struct caps = { _LINUX_CAPABILITY_VERSION_3, 0 };
+    struct __user_cap_data_struct empty[2] = { {0}, {0} };
+
+    // Do this before opening the APK or starting ART. Fail closed if the su profile disallows it.
+    if (geteuid() != 0 || setgroups(0, NULL) != 0 ||
+        setresgid(SHELL_ID, SHELL_ID, SHELL_ID) != 0 ||
+        setresuid(SHELL_ID, SHELL_ID, SHELL_ID) != 0 ||
+        syscall(__NR_capset, &caps, empty) != 0 ||
+        prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
+        perrorf("fatal: cannot drop root privileges for the clipboard worker\n");
+        exit(EXIT_FATAL_UID);
+    }
+}
+
 int main(int argc, char *argv[]) {
     char apk_path[PATH_MAX] = {0};
+    const char *root_token = NULL;
     for (int i = 1; i < argc; ++i) {
         if (strncmp(argv[i], "--apk=", 6) == 0)
             strncpy(apk_path, argv[i] + 6, sizeof(apk_path) - 1);
+        else if (strncmp(argv[i], ROOT_TOKEN_PREFIX, sizeof(ROOT_TOKEN_PREFIX) - 1) == 0)
+            root_token = argv[i];
     }
 
     uid_t uid = getuid();
@@ -120,7 +148,11 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FATAL_UID);
     }
 
-    foreach_proc(kill_old_server_cb);
+    if (root_token != NULL) {
+        drop_to_shell();
+    } else {
+        foreach_proc(kill_old_server_cb);
+    }
 
     if (apk_path[0] == '\0') {
         char buf[PATH_MAX];
@@ -144,5 +176,6 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FATAL_PM_PATH);
     }
 
-    start_server(apk_path, SERVER_CLASS_PATH, SERVER_NAME);
+    start_server(apk_path, SERVER_CLASS_PATH,
+                 root_token == NULL ? SERVER_NAME : ROOT_SERVER_NAME, root_token);
 }

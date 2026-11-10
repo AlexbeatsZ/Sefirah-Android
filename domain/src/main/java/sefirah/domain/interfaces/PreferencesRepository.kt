@@ -40,6 +40,8 @@ interface PreferencesRepository {
 
     suspend fun saveClipboardWorkerEnabled(enabled: Boolean)
     fun readClipboardWorkerEnabled(): Flow<Boolean>
+    suspend fun saveRootClipboardEnabled(enabled: Boolean)
+    fun readRootClipboardEnabled(): Flow<Boolean>
     
     suspend fun saveMessageSyncSettingsForDevice(deviceId: String, messageSync: Boolean)
     fun readMessageSyncSettingsForDevice(deviceId: String): Flow<Boolean>

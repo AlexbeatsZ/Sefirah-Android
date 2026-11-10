@@ -10,7 +10,7 @@ android {
     defaultConfig {
         // app_process payload — only started on API 29+. Host app stays at 23 via overrideLibrary.
         minSdk = 29
-        buildConfigField("int", "VERSION_CODE", "1")
+        buildConfigField("int", "VERSION_CODE", "2")
     }
 
     compileOptions {

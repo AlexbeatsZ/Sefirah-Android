@@ -49,4 +49,5 @@ dependencies {
     implementation(libs.apache.sshd.scp)
     implementation(libs.shizuku.api)
     implementation(libs.shizuku.provider)
+    testImplementation(libs.junit)
 }
