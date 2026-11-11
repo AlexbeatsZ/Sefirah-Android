@@ -13,4 +13,7 @@ interface IWorkerService {
 
     /** Must match worker module versionCode — app replaces the process on mismatch. */
     int getVersion() = 4;
+
+    /** Turn the Bluetooth adapter on/off with the shell's own permission; true when the command succeeded. */
+    boolean setBluetoothEnabled(boolean enabled) = 5;
 }

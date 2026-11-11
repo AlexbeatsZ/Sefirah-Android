@@ -16,8 +16,8 @@ android {
     defaultConfig {
         applicationId = "com.castle.sefirah"
 
-        versionCode = 41
-        versionName = "3.2.0.3"
+        versionCode = 42
+        versionName = "3.2.0.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         externalNativeBuild {

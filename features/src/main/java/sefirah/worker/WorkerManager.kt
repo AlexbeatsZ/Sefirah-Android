@@ -133,6 +133,16 @@ class WorkerManager @Inject constructor(
         }
     }
 
+    /** A live shell-UID worker (root launcher or Shizuku) can switch Bluetooth without a local prompt. */
+    fun canControlBluetooth(): Boolean = registration?.uid == SHELL_UID && isWorkerAlive()
+
+    fun setBluetoothEnabled(enabled: Boolean): Boolean = try {
+        canControlBluetooth() && worker?.setBluetoothEnabled(enabled) == true
+    } catch (e: Exception) {
+        Log.w(TAG, "setBluetoothEnabled failed", e)
+        false
+    }
+
     fun isWorkerAlive(): Boolean =
         try {
             if (!mode.enabled) return false
@@ -273,7 +283,7 @@ class WorkerManager @Inject constructor(
          * Must match `:worker` `BuildConfig.VERSION_CODE`. Bump when worker code / AIDL changes
          * so an old still-running `app_process` is replaced.
          */
-        const val WORKER_VERSION = 2
+        const val WORKER_VERSION = 3
         internal const val SHELL_UID = 2000
 
         private const val USER_SERVICE_TAG = "worker-launcher"

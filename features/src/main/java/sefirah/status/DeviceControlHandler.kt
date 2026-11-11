@@ -37,6 +37,7 @@ class DeviceControlHandler @Inject constructor(
     private val networkManager: NetworkManager,
     private val preferences: sefirah.domain.interfaces.PreferencesRepository,
     private val devices: sefirah.domain.interfaces.DeviceManager,
+    private val workerManager: sefirah.worker.WorkerManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -44,6 +45,16 @@ class DeviceControlHandler @Inject constructor(
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     private val bluetoothAdapter =
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+
+    init {
+        // Root/Shizuku worker availability decides direct vs. local Bluetooth; tell connected peers when it changes.
+        scope.launch {
+            workerManager.rootStatus.collect {
+                devices.pairedDevices.value.filter { it.connectionState.isConnected && it.controls?.version == 1 }
+                    .forEach { sendDeviceStatus(it.deviceId) }
+            }
+        }
+    }
 
     data class BluetoothPrompt(val deviceId: String, val enabled: Boolean, val created: Long = android.os.SystemClock.elapsedRealtime())
     private val _bluetoothPrompt = kotlinx.coroutines.flow.MutableStateFlow<BluetoothPrompt?>(null)
@@ -91,6 +102,7 @@ class DeviceControlHandler @Inject constructor(
             bluetoothControl = when {
                 bluetoothAdapter == null -> "unsupported"
                 !allowed || state.isAvailable == false -> "denied"
+                workerManager.canControlBluetooth() -> "direct"
                 else -> "local"
             },
             bluetoothEnabled = if (state.isAvailable == false) null else state.isEnabled,
@@ -125,6 +137,8 @@ class DeviceControlHandler @Inject constructor(
                     bluetoothAdapter == null -> "unsupported"
                     getBluetoothState().isAvailable == false -> "denied"
                     getBluetoothState().isEnabled == (request.value == 1) -> "applied"
+                    workerManager.canControlBluetooth() && workerManager.setBluetoothEnabled(request.value == 1) ->
+                        awaitBluetooth(request.value == 1)
                     else -> {
                         val prompt = BluetoothPrompt(deviceId, request.value == 1)
                         _bluetoothPrompt.value = prompt
@@ -143,6 +157,15 @@ class DeviceControlHandler @Inject constructor(
             networkManager.sendMessage(deviceId, result)
             sendDeviceStatus(deviceId)
         }
+    }
+
+    /** Report only the state the adapter actually reached; turning on usually takes 1-2 s. */
+    private suspend fun awaitBluetooth(enabled: Boolean): String {
+        repeat(25) {
+            if (getBluetoothState().isEnabled == enabled) return "applied"
+            kotlinx.coroutines.delay(200)
+        }
+        return "unconfirmed"
     }
 
     private var lastBatteryStatus: BatteryState? = null

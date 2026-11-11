@@ -16,6 +16,7 @@ import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 
 import java.io.File;
+import java.util.concurrent.TimeUnit;
 
 import rikka.hidden.compat.ActivityManagerApis;
 import rikka.hidden.compat.adapter.UidObserverAdapter;
@@ -217,6 +218,31 @@ public final class WorkerService extends IWorkerService.Stub {
     @Override
     public void suppressNextOutbound() {
         clipboard.suppressNextOutbound();
+    }
+
+    @Override
+    public boolean setBluetoothEnabled(boolean enabled) {
+        // Same path as `adb shell cmd bluetooth_manager enable|disable`; runs with this process's shell UID.
+        Process process = null;
+        try {
+            process = new ProcessBuilder("/system/bin/cmd", "bluetooth_manager", enabled ? "enable" : "disable")
+                    .redirectErrorStream(true)
+                    .redirectOutput(new File("/dev/null"))
+                    .start();
+            process.getOutputStream().close();
+            if (!process.waitFor(10, TimeUnit.SECONDS)) {
+                Ln.w("Bluetooth command timed out");
+                return false;
+            }
+            int code = process.exitValue();
+            if (code != 0) Ln.w("Bluetooth command exited with " + code);
+            return code == 0;
+        } catch (Exception e) {
+            Ln.w("Bluetooth command failed", e);
+            return false;
+        } finally {
+            if (process != null && process.isAlive()) process.destroyForcibly();
+        }
     }
 
     private final class ClipboardListener {
