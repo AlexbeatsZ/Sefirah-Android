@@ -130,7 +130,7 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.Top,
     ) {
         item { LogoHeader() }
-        item { DevicePresentationSettings(viewModel) }
+        item { DevicePresentationEntry(viewModel, rootNavController) }
 
         item {
                 TextPreferenceWidget(

@@ -1,6 +1,7 @@
 package com.castle.sefirah.presentation.common.components
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,21 +20,24 @@ import sefirah.domain.model.PairedDevice
 fun DevicePreview(device: PairedDevice) = DevicePreview(device.presentation, device.avatar)
 
 @Composable
-fun DevicePreview(presentation: sefirah.domain.model.DevicePresentation?, previewImage: String?) {
+fun DevicePreview(presentation: sefirah.domain.model.DevicePresentation?, previewImage: String?, scale: Float = 1f) {
     val ratio = presentation?.displayRatio() ?: 1f
     val kind = presentation?.kind ?: "unknown"
     val bitmap = remember(previewImage, presentation) {
         if (presentation?.wallpaperSource in listOf("wallpaper", "userSelected")) base64ToBitmap(previewImage) else null
     }
-    val height = minOf(60f, 76f / ratio)
-    Column(Modifier.width(76.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    val height = minOf(60f, 76f / ratio) * scale
+    val outline = MaterialTheme.colorScheme.outline
+    Column(Modifier.width((76f * scale).dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size((height * ratio).dp, height.dp)
-            .border(2.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(if (kind == "phone") 8.dp else 3.dp))
-            .padding(3.dp).clip(RoundedCornerShape(3.dp)), contentAlignment = Alignment.Center) {
+            .border((2f * scale.coerceAtMost(1.5f)).dp, outline, RoundedCornerShape((if (kind == "phone") 8f else 3f).times(scale).dp))
+            .padding((3f * scale).dp).clip(RoundedCornerShape((3f * scale).dp))
+            .background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
             if (bitmap != null) Image(rememberAsyncImagePainter(bitmap), null,
                 Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            else Text(when (kind) { "phone" -> "▯"; "tablet" -> "▭"; "computer" -> "▰"; else -> "?" })
+            else if (kind == "unknown") Text("?", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (kind == "computer") HorizontalDivider(Modifier.width(24.dp).padding(top = 3.dp), thickness = 3.dp)
+        if (kind == "computer") HorizontalDivider(Modifier.width((24f * scale).dp).padding(top = (3f * scale).dp),
+            thickness = (3f * scale.coerceAtMost(1.5f)).dp, color = outline)
     }
 }

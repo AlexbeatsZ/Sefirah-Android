@@ -162,15 +162,6 @@ fun DeviceSettingsScreen(
             ) {
                 item { 
                     DeviceHeader(device = currentDevice)
-                    SwitchPreferenceWidget(
-                        title = stringResource(R.string.remote_device_controls),
-                        subtitle = stringResource(R.string.remote_device_controls_description),
-                        checked = preferences.allowRemoteDeviceControls,
-                        onCheckedChanged = viewModel::saveRemoteDeviceControls
-                    )
-                    SwitchPreferenceWidget(title = stringResource(R.string.share_wallpaper_with_device),
-                        subtitle = stringResource(R.string.share_wallpaper_with_device_description),
-                        checked = shareWallpaper, onCheckedChanged = viewModel::saveShareWallpaper)
                 }
                 
                 item { HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp)) }
@@ -337,6 +328,26 @@ fun DeviceSettingsScreen(
                         viewModel.saveMediaPlayerControlSettings(checked)
                     },
                     viewModel = viewModel
+                )
+            }
+
+            item {
+                SwitchPreferenceWidget(
+                    title = stringResource(R.string.remote_device_controls),
+                    subtitle = stringResource(R.string.remote_device_controls_description),
+                    icon = ImageVector.vectorResource(R.drawable.ic_bluetooth),
+                    checked = preferences.allowRemoteDeviceControls,
+                    onCheckedChanged = viewModel::saveRemoteDeviceControls,
+                )
+            }
+
+            item {
+                SwitchPreferenceWidget(
+                    title = stringResource(R.string.share_wallpaper_with_device),
+                    subtitle = stringResource(R.string.share_wallpaper_with_device_description),
+                    icon = ImageVector.vectorResource(R.drawable.ic_wallpaper),
+                    checked = shareWallpaper,
+                    onCheckedChanged = viewModel::saveShareWallpaper,
                 )
             }
 

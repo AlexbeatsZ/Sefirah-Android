@@ -10,6 +10,7 @@ import com.castle.sefirah.navigation.SettingsRouteScreen
 import com.castle.sefirah.presentation.about.AboutScreen
 import com.castle.sefirah.presentation.network.TrustedNetworkScreen
 import com.castle.sefirah.presentation.permission.PermissionScreen
+import com.castle.sefirah.presentation.settings.DevicePresentationScreen
 import com.castle.sefirah.presentation.settings.update.NewUpdateScreen
 
 fun NavGraphBuilder.settingsNavGraph(rootNavController: NavHostController) {
@@ -25,6 +26,9 @@ fun NavGraphBuilder.settingsNavGraph(rootNavController: NavHostController) {
         }
         composable(route = SettingsRouteScreen.PermissionScreen.route) {
             PermissionScreen(rootNavController,)
+        }
+        composable(route = SettingsRouteScreen.PresentationScreen.route) {
+            DevicePresentationScreen(rootNavController)
         }
         composable(route = SettingsRouteScreen.NewUpdateScreen.route) {
             NewUpdateScreen(rootNavController)
