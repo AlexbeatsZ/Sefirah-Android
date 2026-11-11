@@ -42,7 +42,6 @@ class DeviceSettingsViewModel @Inject constructor(
     private val preferencesRepository: PreferencesRepository,
     private val featureManager: FeatureManager,
     private val deviceControlHandler: sefirah.status.DeviceControlHandler,
-    private val presentationPublisher: sefirah.status.DevicePresentationPublisher,
     private val appScope: AppCoroutineScope,
     savedStateHandle: SavedStateHandle,
     application: Application
@@ -163,15 +162,6 @@ class DeviceSettingsViewModel @Inject constructor(
                 deviceManager.localDevice.deviceName,
                 controls = deviceControlHandler.capabilities(deviceId)
             ))
-        }
-    }
-
-    val shareWallpaper = preferencesRepository.readPresentation("allow_$deviceId")
-        .map { it == "true" }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
-    fun saveShareWallpaper(enabled: Boolean) {
-        viewModelScope.launch {
-            preferencesRepository.savePresentation("allow_$deviceId", enabled.toString())
-            presentationPublisher.publishAll()
         }
     }
 

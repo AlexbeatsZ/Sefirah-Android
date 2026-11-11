@@ -1,5 +1,8 @@
 package com.castle.sefirah.presentation.settings
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -33,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
@@ -40,6 +44,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.castle.sefirah.navigation.Graph
@@ -71,6 +77,12 @@ fun DevicePresentationScreen(rootNavController: NavHostController) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
         if (it != null) viewModel.selectPresentationImage(it)
     }
+    val context = LocalContext.current
+    val grantAccess = {
+        context.startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            Uri.fromParts("package", context.packageName, null)))
+    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshPresentation() }
     var openChoice by remember { mutableStateOf<PresentationField?>(null) }
     var showSourceDialog by remember { mutableStateOf(false) }
 
@@ -153,7 +165,18 @@ fun DevicePresentationScreen(rootNavController: NavHostController) {
                     subtitle = stringResource(R.string.share_wallpaper_preview_subtitle),
                     icon = ImageVector.vectorResource(R.drawable.ic_wallpaper),
                     checked = viewModel.shareWallpaper,
-                    onCheckedChanged = viewModel::shareWallpaper,
+                    onCheckedChanged = {
+                        viewModel.shareWallpaper(it)
+                        if (it && viewModel.wallpaperAccessMissing) grantAccess()
+                    },
+                )
+            }
+            if (viewModel.shareWallpaper && viewModel.wallpaperAccessMissing) item {
+                TextPreferenceWidget(
+                    title = stringResource(R.string.storage_access_preference),
+                    subtitle = stringResource(R.string.presentation_wallpaper_access),
+                    icon = ImageVector.vectorResource(R.drawable.ic_folder),
+                    onPreferenceClick = { grantAccess() },
                 )
             }
             item {

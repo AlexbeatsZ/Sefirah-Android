@@ -250,11 +250,10 @@
     <string name="share_wallpaper_preview">Share wallpaper preview</string>
     <string name="choose_presentation_image">Choose a preview image</string>
     <string name="use_system_wallpaper">Use system wallpaper</string>
-    <string name="share_wallpaper_with_device">Share this phone\'s wallpaper preview</string>
-    <string name="share_wallpaper_with_device_description">Also turn on sharing in Settings › Appearance on other devices. Turning this off clears the preview on the other device.</string>
     <string name="presentation_section_frame">Frame</string>
+    <string name="presentation_wallpaper_access">Reading the system wallpaper requires All files access. Tap to grant it, or pick a custom image instead.</string>
     <string name="presentation_section_wallpaper">Wallpaper preview</string>
-    <string name="share_wallpaper_preview_subtitle">Each device must also be allowed in its own device settings.</string>
+    <string name="share_wallpaper_preview_subtitle">When on, every paired device can see this phone\'s wallpaper preview. Turning it off clears previews already received.</string>
     <string name="presentation_image_source">Preview image</string>
     <string name="presentation_source_wallpaper">System wallpaper</string>
     <string name="presentation_source_custom">Custom image</string>

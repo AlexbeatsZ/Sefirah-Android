@@ -6,6 +6,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.util.Base64
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.Json
@@ -39,8 +41,8 @@ class DevicePresentationPublisher @Inject constructor(
 
     suspend fun metadata(peerId: String?, includeImage: Boolean = false): DevicePresentation {
         val settings = localSettings().copy(wallpaperSource = "none", wallpaperId = null, wallpaper = null)
-        if (preferences.readPresentation("share").first() != "true" ||
-            peerId != null && preferences.readPresentation("allow_$peerId").first() != "true") return settings
+        // One global consent covers every paired device; there is no per-device gate.
+        if (preferences.readPresentation("share").first() != "true") return settings
         val selected = File(context.filesDir, "device-preview.jpg")
         val bitmap = if (selected.exists()) BitmapFactory.decodeFile(selected.path) else try {
             val drawable = WallpaperManager.getInstance(context).drawable ?: return settings
@@ -56,8 +58,7 @@ class DevicePresentationPublisher @Inject constructor(
         val bytes = ByteArrayOutputStream().use { output -> bitmap.compress(Bitmap.CompressFormat.JPEG, 75, output); output.toByteArray() }
         bitmap.recycle()
         if (bytes.size > 65536) return settings
-        if (preferences.readPresentation("share").first() != "true" ||
-            peerId != null && preferences.readPresentation("allow_$peerId").first() != "true") return settings
+        if (preferences.readPresentation("share").first() != "true") return settings
         val id = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         return settings.copy(wallpaperSource = if (selected.exists()) "userSelected" else "wallpaper",
             wallpaperId = id, wallpaper = if (includeImage) Base64.encodeToString(bytes, Base64.NO_WRAP) else null)
@@ -109,5 +110,9 @@ class DevicePresentationPublisher @Inject constructor(
     }
 
     fun useWallpaper() { File(context.filesDir, "device-preview.jpg").delete() }
+
+    /** Android 13+ only exposes the real wallpaper to apps holding all-files access. */
+    fun wallpaperAccessMissing(): Boolean = !File(context.filesDir, "device-preview.jpg").exists() &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Environment.isExternalStorageManager()
 
 }

@@ -59,7 +59,14 @@ class SettingsViewModel @Inject constructor(
         private set
     var presentationPreview by mutableStateOf<sefirah.domain.model.DevicePresentation?>(null)
         private set
-    private suspend fun refreshPreview() { presentationPreview = presentationPublisher.metadata(null, true) }
+    var wallpaperAccessMissing by mutableStateOf(false)
+        private set
+    private suspend fun refreshPreview() {
+        wallpaperAccessMissing = presentationPublisher.wallpaperAccessMissing()
+        presentationPreview = presentationPublisher.metadata(null, true)
+    }
+    /** Re-reads the wallpaper after returning from the system permission screen. */
+    fun refreshPresentation() { viewModelScope.launch { refreshPreview(); presentationPublisher.publishAll() } }
     var shareWallpaper by mutableStateOf(false)
         private set
     init {

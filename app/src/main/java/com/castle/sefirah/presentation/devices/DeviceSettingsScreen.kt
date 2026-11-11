@@ -77,7 +77,6 @@ fun DeviceSettingsScreen(
 ) {
     val device by viewModel.device.collectAsState()
     val preferences by viewModel.preferences.collectAsState()
-    val shareWallpaper by viewModel.shareWallpaper.collectAsState()
     val permissionStates by viewModel.permissionStates.collectAsState()
 
     Scaffold(
@@ -338,16 +337,6 @@ fun DeviceSettingsScreen(
                     icon = ImageVector.vectorResource(R.drawable.ic_bluetooth),
                     checked = preferences.allowRemoteDeviceControls,
                     onCheckedChanged = viewModel::saveRemoteDeviceControls,
-                )
-            }
-
-            item {
-                SwitchPreferenceWidget(
-                    title = stringResource(R.string.share_wallpaper_with_device),
-                    subtitle = stringResource(R.string.share_wallpaper_with_device_description),
-                    icon = ImageVector.vectorResource(R.drawable.ic_wallpaper),
-                    checked = shareWallpaper,
-                    onCheckedChanged = viewModel::saveShareWallpaper,
                 )
             }
 
