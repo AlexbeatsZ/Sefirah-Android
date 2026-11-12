@@ -871,7 +871,7 @@ class NetworkService : Service() {
         unregisterReceiver(wifiStateReceiver)
         deviceControlHandler.stop()
         playSoundFeature.stop()
-        networkDiscovery.unregister()
+        networkDiscovery.release()
 
         remotePlaybackFeature.release()
         smsFeature.stop()

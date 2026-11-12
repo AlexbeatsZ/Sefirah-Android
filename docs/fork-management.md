@@ -23,3 +23,7 @@ Status also returns rootClipboardStatus and storageLocation. The shell/root-only
 The branch includes Android reconnect PR #91, device controls #92 and presentation #93, paired with desktop #317/#318. Sharing and remote-control consent defaults remain off. Agent logs and AGENTS.md remain local; this design document is part of the product source.
 
 Build with ./gradlew :app:assembleRelease. Run uv run --no-project tools/sign_release.py with the existing .private/Sefirah-release.p12 and .private/release-signing.json. The private directory must remain excluded from Git and protected by user-only filesystem permissions. Losing or replacing this signing identity prevents in-place upgrades. Release APKs are nondebuggable and minified. Update the existing installation with adb install --no-incremental -r, preserving its identity and grants.
+
+## Startup discovery
+
+The fork repeats its UDP discovery announcement for about two minutes after the network service starts and whenever Wi-Fi becomes available, stopping once every non-forced paired peer is connected. It targets enabled paired addresses, the LAN subnet broadcast and 255.255.255.255. Desktops still do the dialing. This matters for macOS peers, which cannot see the phone over mDNS and previously stayed disconnected after a phone reboot until the app was opened. Boot and package-update autostart use the existing `BOOT_COMPLETED`/`MY_PACKAGE_REPLACED` receiver.

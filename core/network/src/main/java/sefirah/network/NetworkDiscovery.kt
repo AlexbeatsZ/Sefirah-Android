@@ -44,6 +44,8 @@ import sefirah.domain.model.DiscoveredDevice
 import sefirah.domain.model.PairedDevice
 import sefirah.domain.model.UdpBroadcast
 import sefirah.domain.util.MessageSerializer
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.properties.Delegates
@@ -72,6 +74,9 @@ class NetworkDiscovery @Inject constructor(
 
     private var trustAllNetworks : Boolean = true
 
+    private val announcer = DiscoveryAnnouncer(scope, { deviceManager.pairedDevices.value }) { broadcastDevice() }
+    private var wifiAnnounceCallback: ConnectivityManager.NetworkCallback? = null
+
     private val _currentWifiSsid = MutableStateFlow<String?>(null)
     val currentWifiSsid: StateFlow<String?> = _currentWifiSsid.asStateFlow()
 
@@ -85,6 +90,7 @@ class NetworkDiscovery @Inject constructor(
             deviceName = localDevice.deviceName,
         )
         udpBroadcastMessage = MessageSerializer.serialize(udpBroadcast) ?: throw Exception("Failed to serialize UDP broadcast")
+        registerWifiAnnouncer()
 
         preferencesRepository.readTrustAllNetworks().collectLatest { trustAllNetworks ->
             this.trustAllNetworks = trustAllNetworks
@@ -114,7 +120,7 @@ class NetworkDiscovery @Inject constructor(
                 launch { startDeviceListener() }
                 launch { startNSDDiscovery() }
 
-                broadcastDevice()
+                announcer.start()
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting discovery", e)
             }
@@ -125,6 +131,7 @@ class NetworkDiscovery @Inject constructor(
         try {
             if (discoveryJob?.isActive == false) return
             Log.d(TAG, "Stopping discovery")
+            announcer.cancel()
             discoveryJob?.cancel()
             discoveryJob = null
             udpSocket?.close()
@@ -302,7 +309,9 @@ class NetworkDiscovery @Inject constructor(
                             .filter { it.isEnabled }
                             .map { it.address }
                     }
-                    .distinct() + "255.255.255.255"
+                    .plus(subnetBroadcastAddresses())
+                    .plus("255.255.255.255")
+                    .distinct()
 
                 broadcastList.forEach { hostname ->
                     try {
@@ -370,6 +379,59 @@ class NetworkDiscovery @Inject constructor(
         }
     }
 
+    /**
+     * Re-announce whenever a Wi-Fi network becomes usable. WIFI_STATE_CHANGED only covers the radio
+     * being switched, not the moment the phone joins the LAN after boot or a network change.
+     */
+    private fun registerWifiAnnouncer() {
+        if (wifiAnnounceCallback != null) return
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                if (discoveryJob?.isActive == true) announcer.start()
+            }
+        }
+        try {
+            cm.registerNetworkCallback(
+                NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
+                callback,
+            )
+            wifiAnnounceCallback = callback
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to register Wi-Fi announce callback", e)
+        }
+    }
+
+    /** Called when the network service is destroyed. */
+    fun release() {
+        announcer.cancel()
+        unregister()
+        wifiAnnounceCallback?.let { callback ->
+            try {
+                context.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to unregister Wi-Fi announce callback", e)
+            }
+        }
+        wifiAnnounceCallback = null
+    }
+
+    /**
+     * Directed broadcast of the LAN interfaces. Uses java.net on purpose: android-smsmms bundles its
+     * own android.net.LinkProperties/LinkAddress/RouteInfo copies, and referencing those types lets
+     * R8 keep and merge the copies, which then crash against the framework classes at runtime.
+     */
+    private fun subnetBroadcastAddresses(): List<String> = try {
+        NetworkInterface.getNetworkInterfaces()?.toList().orEmpty()
+            .filter { it.isUp && !it.isLoopback && LAN_INTERFACE_PREFIXES.any(it.name::startsWith) }
+            .flatMap { it.interfaceAddresses }
+            .filter { it.address is Inet4Address }
+            .mapNotNull { it.broadcast?.hostAddress }
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not resolve subnet broadcast address", e)
+        emptyList()
+    }
+
     fun updateWifiSsid(ssid: String) {
         val ssid = ssid.removeSurrounding("\"")
         when {
@@ -390,5 +452,6 @@ class NetworkDiscovery @Inject constructor(
         private const val TAG = "NetworkDiscovery"
         private const val UNKNOWN_SSID = "<unknown ssid>"
         private const val BROADCAST_RATE_LIMIT_MS = 200L
+        private val LAN_INTERFACE_PREFIXES = listOf("wlan", "eth")
     }
 }
