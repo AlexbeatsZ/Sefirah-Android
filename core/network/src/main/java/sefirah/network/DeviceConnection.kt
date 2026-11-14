@@ -1,4 +1,6 @@
-package sefirah.domain.model
+package sefirah.network
+
+import sefirah.domain.model.*
 
 import android.util.Log
 import io.ktor.utils.io.ByteReadChannel
@@ -12,6 +14,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -52,6 +56,8 @@ class DeviceConnection(
                     throw e
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to send message to $deviceId", e)
+                    outbound.cancel()
+                    runCatching { sslSocket?.close() }
                     break
                 }
             }
@@ -66,15 +72,22 @@ class DeviceConnection(
     fun sendMessage(message: SocketMessage): Boolean =
         outbound.trySend(message).isSuccess
 
+    /** Drain the writer before tearing down a locally disconnected session. */
+    suspend fun sendDisconnect() {
+        if (!sendMessage(sefirah.domain.model.Disconnect)) return
+        outbound.close()
+        withTimeoutOrNull(2000) { writerJob.join() }
+    }
+
     /**
      * Starts listening for messages from the device.
      */
     fun startListening(
         getDevice: suspend (String) -> BaseRemoteDevice?,
-        onMessage: (BaseRemoteDevice, SocketMessage) -> Unit,
+        onMessage: suspend (BaseRemoteDevice, SocketMessage) -> Unit,
         onClose: (DeviceConnection) -> Unit,
     ) {
-        listeningJob?.cancel()
+        if (listeningJob?.isActive == true) return
 
         val channel = readChannel ?: return
 
@@ -82,7 +95,8 @@ class DeviceConnection(
             try {
                 while (isActive && !channel.isClosedForRead) {
                     try {
-                        channel.readUTF8Line()?.let { line ->
+                        val line = channel.readUTF8Line() ?: break
+                        line.let { line ->
                             MessageSerializer.deserialize(line)?.let { socketMessage ->
                                 val device = getDevice(deviceId) ?: return@let
                                 onMessage(device, socketMessage)
@@ -131,8 +145,9 @@ class DeviceConnection(
             readChannel = null
             writeChannel = null
 
-            writerJob.cancelAndJoin()
-            listeningJob?.cancelAndJoin()
+            val caller = currentCoroutineContext()[Job]
+            if (caller !== writerJob) writerJob.cancelAndJoin()
+            if (caller !== listeningJob) listeningJob?.cancelAndJoin()
             listeningJob = null
 
             scope.cancel()

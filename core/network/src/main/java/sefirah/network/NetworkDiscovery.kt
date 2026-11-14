@@ -129,7 +129,6 @@ class NetworkDiscovery @Inject constructor(
 
     private fun stopDiscovery() {
         try {
-            if (discoveryJob?.isActive == false) return
             Log.d(TAG, "Stopping discovery")
             announcer.cancel()
             discoveryJob?.cancel()
@@ -144,8 +143,12 @@ class NetworkDiscovery @Inject constructor(
     }
 
     fun register() {
-        if (!checkLocationPermissions(context) || trustAllNetworks) {
+        if (trustAllNetworks) {
             startDiscovery()
+            return
+        }
+        if (!checkLocationPermissions(context)) {
+            stopDiscovery()
             return
         }
         if (isNetworkCallbackRegistered) unregister()
@@ -241,6 +244,7 @@ class NetworkDiscovery @Inject constructor(
                     if (attributes != null) {
                         val deviceId = serviceInfo.serviceName
                         val port = attributes["serverPort"]?.let { String(it, Charsets.UTF_8).toIntOrNull() }
+                            ?: serviceInfo.port.takeIf { it in 1..65535 && it != udpPort }
 
                         val addresses = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
                             SdkExtensions.getExtensionVersion(Build.VERSION_CODES.TIRAMISU) >= 7
@@ -252,27 +256,16 @@ class NetworkDiscovery @Inject constructor(
                                 .filter { !it.contains(":") }
                         }
 
-                        if (port == null || addresses.isEmpty()) return@forEach
+                        if (port == null || port !in 1..65535 || addresses.isEmpty() || deviceId == deviceManager.localDevice.deviceId) return@forEach
 
                         when (val device = deviceManager.getDevice(deviceId)) {
                             is PairedDevice -> {
                                 if (device.connectionState.isConnectedOrConnecting || device.connectionState.isForcedDisconnect) return@forEach
 
-                                // Merge discovered IPs with existing entries
-                                val existingAddresses = device.addresses.map { it.address }.toSet()
-                                val newEntries = addresses
-                                    .filter { it !in existingAddresses }
-                                    .map { AddressEntry(it) }
-                                val mergedAddresses = device.addresses + newEntries
-                                
-                                val updatedDevice = if (newEntries.isNotEmpty() || device.port != port) {
-                                    device.copy(
-                                        addresses = mergedAddresses,
-                                        port = port
-                                    )
-                                } else {
-                                    device
-                                }
+                                val updatedDevice = deviceManager.updatePairedDevice(device.deviceId) { current ->
+                                    val known = current.addresses.map { it.address }.toSet()
+                                    current.copy(addresses = current.addresses + addresses.filter { it !in known }.map { AddressEntry(it) }, port = port)
+                                } ?: return@forEach
                                 networkManager.connectPaired(updatedDevice)
                             }
                             is DiscoveredDevice -> return@forEach
@@ -292,6 +285,8 @@ class NetworkDiscovery @Inject constructor(
     }
 
     fun broadcastDevice() {
+        if (discoveryJob?.isActive != true || !::udpBroadcastMessage.isInitialized) return
+        val socket = udpSocket?.takeUnless { it.isClosed } ?: return
         val currentTime = System.currentTimeMillis()
         if (currentTime - lastBroadcastTime < BROADCAST_RATE_LIMIT_MS) return
 
@@ -299,9 +294,6 @@ class NetworkDiscovery @Inject constructor(
 
         scope.launch {
             try {
-                if (udpSocket == null || udpSocket?.isClosed == true) {
-                    udpSocket = socketFactory.udpSocket(udpPort)
-                }
 
                 val broadcastList = deviceManager.pairedDevices.value
                     .flatMap { device -> 
@@ -317,7 +309,8 @@ class NetworkDiscovery @Inject constructor(
                     try {
                         val address = InetSocketAddress(hostname, udpPort)
                         val bytePacket = buildPacket { writeString(udpBroadcastMessage) }
-                        udpSocket?.send(Datagram(bytePacket, address))
+                        if (discoveryJob?.isActive != true) return@launch
+                        socket.send(Datagram(bytePacket, address))
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to broadcast to $hostname: ${e.message?.take(30)}")
                     }
@@ -334,42 +327,28 @@ class NetworkDiscovery @Inject constructor(
         try {
             while (currentCoroutineContext().isActive) {
                 val datagram = udpSocket!!.receive()
-                val udpBroadcast = datagram.packet.readLine()?.let {
-                    MessageSerializer.deserialize(it) as UdpBroadcast
-                } ?: continue
-
-                if (udpBroadcast.deviceId == deviceManager.localDevice.deviceId) continue
-                Log.d(TAG, "Received UDP broadcast from ${udpBroadcast.deviceName}")
-                when (val device = deviceManager.getDevice(udpBroadcast.deviceId)) {
-                    is PairedDevice -> {
-                         if (device.connectionState.isConnectedOrConnecting || device.connectionState.isForcedDisconnect) continue
-
-                        // Update IP addresses if new ones are found
-                        val senderIp = datagram.address.toString()
-                        val existingAddresses = device.addresses.map { it.address }.toSet()
-                        if (!existingAddresses.contains(senderIp)) {
-                            try {
-                                val updatedAddresses = device.addresses + AddressEntry(senderIp)
-                                appRepository.updateDeviceAddresses(device.deviceId, updatedAddresses)
-                            } catch (e: Exception) {
-                                Log.e(TAG, "Failed to update IP addresses in database", e)
-                            }
+                try {
+                    val announcement = datagram.packet.readLine()?.let {
+                        MessageSerializer.deserialize(it) as? UdpBroadcast
+                    } ?: continue
+                    if (announcement.deviceId == deviceManager.localDevice.deviceId || announcement.port !in 1..65535) continue
+                    val senderIp = (datagram.address as? InetSocketAddress)?.hostname ?: continue
+                    when (val device = deviceManager.getDevice(announcement.deviceId)) {
+                        is PairedDevice -> {
+                            val updated = deviceManager.updatePairedDevice(device.deviceId) { current ->
+                                current.copy(port = announcement.port, addresses = if (current.addresses.any { it.address == senderIp })
+                                    current.addresses else current.addresses + AddressEntry(senderIp))
+                            } ?: continue
+                            if (!updated.connectionState.isConnectedOrConnecting && !updated.connectionState.isForcedDisconnect)
+                                networkManager.connectPaired(updated)
                         }
-
-                         // Update device with discovered port if it differs
-                         val updatedDevice = if (device.port != udpBroadcast.port) {
-                             device.copy(port = udpBroadcast.port)
-                         } else {
-                             device
-                         }
-                         networkManager.connectPaired(updatedDevice)
+                        null -> networkManager.connectTo(ConnectionDetails(announcement.deviceId, announcement.port, listOf(senderIp)))
+                        else -> Unit
                     }
-                    null -> {
-                        // New device
-                        val senderIp = datagram.address.toString()
-                        val connectionDetails = ConnectionDetails(udpBroadcast.deviceId, udpBroadcast.port, listOf(senderIp))
-                        networkManager.connectTo(connectionDetails)
-                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Ignoring invalid discovery datagram", e)
                 }
             }
         } catch (e: CancellationException) {
@@ -404,7 +383,7 @@ class NetworkDiscovery @Inject constructor(
 
     /** Called when the network service is destroyed. */
     fun release() {
-        announcer.cancel()
+        stopDiscovery()
         unregister()
         wifiAnnounceCallback?.let { callback ->
             try {

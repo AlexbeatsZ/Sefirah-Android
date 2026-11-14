@@ -33,7 +33,7 @@ import sefirah.domain.model.LocalDevice
 import sefirah.domain.model.PairedDevice
 import sefirah.domain.model.PendingDeviceApproval
 import sefirah.domain.interfaces.DeviceManager
-import java.io.File
+import kotlinx.coroutines.CompletableDeferred
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,6 +45,7 @@ class DeviceManagerImpl @Inject constructor(
 ) : DeviceManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val devicesMutex = Mutex()
+    private val devicesLoaded = CompletableDeferred<Unit>()
 
     private val _discoveredDevices = MutableStateFlow<Map<String, DiscoveredDevice>>(emptyMap())
     override val discoveredDevices: StateFlow<Map<String, DiscoveredDevice>> = _discoveredDevices.asStateFlow()
@@ -109,8 +110,10 @@ class DeviceManagerImpl @Inject constructor(
                         _selectedDeviceId.value = pairedList.first().deviceId
                     }
                 }
+                devicesLoaded.complete(Unit)
                 Log.d(TAG, "Loaded ${_pairedDevices.value.size} paired devices from database")
             } catch (e: Exception) {
+                devicesLoaded.completeExceptionally(e)
                 Log.e(TAG, "Error loading devices from database", e)
             }
         }
@@ -133,13 +136,6 @@ class DeviceManagerImpl @Inject constructor(
             val deviceName = Settings.Global.getString(context.contentResolver, "device_name")
             val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
 
-            try {
-                val file = File(context.getExternalFilesDir(null), "device_info.txt")
-                file.writeText(androidId)
-                Log.d(TAG, "Debug info written to: ${file.absolutePath}")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to write debug info", e)
-            }
             val localDevice = LocalDevice(
                 deviceId = androidId,
                 deviceName = deviceName,
@@ -155,8 +151,9 @@ class DeviceManagerImpl @Inject constructor(
 
 
     override suspend fun getDevice(deviceId: String): BaseRemoteDevice? {
+        devicesLoaded.await()
         return devicesMutex.withLock {
-            _discoveredDevices.value[deviceId] ?: _pairedDevices.value.firstOrNull { it.deviceId == deviceId }
+            _pairedDevices.value.firstOrNull { it.deviceId == deviceId } ?: _discoveredDevices.value[deviceId]
         }
     }
 
@@ -167,17 +164,8 @@ class DeviceManagerImpl @Inject constructor(
     }
 
     override suspend fun getPairedDevice(deviceId: String): PairedDevice? {
-        return try {
-            devicesMutex.withLock {
-                _pairedDevices.value.firstOrNull { it.deviceId == deviceId }
-            } ?: run {
-                val dbDevice = appRepository.getRemoteDevice(deviceId).first()?.toDomain()
-                dbDevice
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting paired device", e)
-            null
-        }
+        devicesLoaded.await()
+        return devicesMutex.withLock { _pairedDevices.value.firstOrNull { it.deviceId == deviceId } }
     }
 
     override suspend fun addOrUpdateDiscoveredDevice(device: DiscoveredDevice) {
@@ -197,6 +185,7 @@ class DeviceManagerImpl @Inject constructor(
     }
 
     override suspend fun addOrUpdatePairedDevice(device: PairedDevice) {
+        devicesLoaded.await()
         devicesMutex.withLock {
             try {
                 appRepository.addDevice(device.toEntity())
@@ -220,7 +209,22 @@ class DeviceManagerImpl @Inject constructor(
         }
     }
 
+    override suspend fun updatePairedDevice(deviceId: String, update: (PairedDevice) -> PairedDevice): PairedDevice? {
+        devicesLoaded.await()
+        return devicesMutex.withLock {
+            val current = _pairedDevices.value.firstOrNull { it.deviceId == deviceId } ?: return@withLock null
+            val updated = update(current)
+            require(updated.deviceId == deviceId)
+            appRepository.addDevice(updated.toEntity())
+            _pairedDevices.value = _pairedDevices.value.map { if (it.deviceId == deviceId) updated else it }
+            if (current.connectionState != updated.connectionState)
+                _connectionEvents.tryEmit(DeviceConnectionEvent.OnConnectionStatusChanged)
+            updated
+        }
+    }
+
     override suspend fun removePairedDevice(deviceId: String) {
+        devicesLoaded.await()
         devicesMutex.withLock {
             try {
                 appRepository.removeDevice(deviceId)

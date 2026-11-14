@@ -90,20 +90,20 @@ class DeviceSettingsViewModel @Inject constructor(
 
     fun toggleIpEnabled(address: String) {
         viewModelScope.launch {
-            _device.value?.let { currentDevice ->
+            deviceManager.updatePairedDevice(deviceId) { currentDevice ->
                 val updatedIps = currentDevice.addresses.map { entry ->
                     if (entry.address == address) entry.copy(isEnabled = !entry.isEnabled)
                     else entry
                 }
                 val updatedDevice = currentDevice.copy(addresses = updatedIps)
-                deviceManager.addOrUpdatePairedDevice(updatedDevice)
+                updatedDevice
             }
         }
     }
 
     fun updateIpPriority(address: String, newPriority: Int) {
         viewModelScope.launch {
-            _device.value?.let { currentDevice ->
+            deviceManager.updatePairedDevice(deviceId) { currentDevice ->
                 // Reorder all entries based on their current visual order
                 val sortedAddresses = currentDevice.addresses.sortedBy { it.priority }.toMutableList()
                 val itemIndex = sortedAddresses.indexOfFirst { it.address == address }
@@ -118,21 +118,21 @@ class DeviceSettingsViewModel @Inject constructor(
                     }
                     
                     val updatedDevice = currentDevice.copy(addresses = updatedIps)
-                    deviceManager.addOrUpdatePairedDevice(updatedDevice)
-                }
+                    updatedDevice
+                } else currentDevice
             }
         }
     }
 
     fun addCustomIp(ip: String) {
         viewModelScope.launch {
-            _device.value?.let { currentDevice ->
+            deviceManager.updatePairedDevice(deviceId) { currentDevice ->
                 val trimmedIp = ip.trim()
                 if (trimmedIp.isNotBlank() && currentDevice.addresses.none { it.address == trimmedIp }) {
                     val newEntry = AddressEntry(trimmedIp, isEnabled = true, priority = currentDevice.addresses.size)
                     val updatedDevice = currentDevice.copy(addresses = currentDevice.addresses + newEntry)
-                    deviceManager.addOrUpdatePairedDevice(updatedDevice)
-                }
+                    updatedDevice
+                } else currentDevice
             }
         }
     }
@@ -146,10 +146,10 @@ class DeviceSettingsViewModel @Inject constructor(
 
     fun removeIp(address: String) {
         viewModelScope.launch {
-            _device.value?.let { currentDevice ->
+            deviceManager.updatePairedDevice(deviceId) { currentDevice ->
                 val updatedIps = currentDevice.addresses.filter { it.address != address }
                 val updatedDevice = currentDevice.copy(addresses = updatedIps)
-                deviceManager.addOrUpdatePairedDevice(updatedDevice)
+                updatedDevice
             }
         }
     }

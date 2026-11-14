@@ -19,7 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import sefirah.Feature
+import sefirah.BoundFeature
 import sefirah.common.util.createTempFile
 import sefirah.common.util.getFileProviderUri
 import sefirah.domain.interfaces.DeviceManager
@@ -44,7 +44,7 @@ class ClipboardFeature @Inject constructor(
     private val preferencesRepository: PreferencesRepository,
     private val fileTransferService: Lazy<FileTransferService>,
     private val workerManager: WorkerManager,
-) : Feature(deviceManager) {
+) : BoundFeature(deviceManager) {
     private val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val workerSettings = combine(
@@ -52,6 +52,10 @@ class ClipboardFeature @Inject constructor(
         preferencesRepository.readRootClipboardEnabled(),
         ::Pair,
     ).distinctUntilChanged()
+
+    private var remoteClip: ClipData? = null
+    private var remoteClipTimestamp: Long? = null
+    private var remoteClipExpires = 0L
 
     private val clipChangedListener = ClipboardManager.OnPrimaryClipChangedListener {
         scope.launch { sendPrimaryClipboard() }
@@ -77,21 +81,19 @@ class ClipboardFeature @Inject constructor(
 
     override fun isPrefEnabled(prefs: DevicePreferences) = prefs.clipboardSync
 
-    override suspend fun onStart(deviceId: String) {
-        if (enabledDevices.size != 1) return
+    override suspend fun onStart() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             clipboardManager.addPrimaryClipChangedListener(clipChangedListener)
         } else {
             val (enabled, preferRoot) = workerSettings.first()
-            applyWorkerState(enabled, preferRoot)
+            workerManager.updateClipboardWatcher(enabled, preferRoot)
         }
     }
 
-    override suspend fun onStop(deviceId: String) {
-        if (enabledDevices.isNotEmpty()) return
+    override suspend fun onStop() {
         clipboardManager.removePrimaryClipChangedListener(clipChangedListener)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            workerManager.updateClipboardWatcher(false)
+            workerManager.updateClipboardWatcher(false, preferencesRepository.readRootClipboardEnabled().first())
         }
     }
 
@@ -129,7 +131,11 @@ class ClipboardFeature @Inject constructor(
                 else -> ClipData.newPlainText("Received clipboard", clipboard.content)
             }
             suppressOutbound()
+            remoteClip = clip
             clipboardManager.setPrimaryClip(clip)
+            remoteClipTimestamp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                clipboardManager.primaryClipDescription?.timestamp else null
+            remoteClipExpires = android.os.SystemClock.elapsedRealtime() + 1000
         } catch (ex: Exception) {
             Log.e(TAG, "Exception handling clipboard", ex)
         } finally {
@@ -141,7 +147,11 @@ class ClipboardFeature @Inject constructor(
         try {
             suppressOutbound()
             val clip = ClipData.newUri(context.contentResolver, "Received file", uri)
+            remoteClip = clip
             clipboardManager.setPrimaryClip(clip)
+            remoteClipTimestamp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                clipboardManager.primaryClipDescription?.timestamp else null
+            remoteClipExpires = android.os.SystemClock.elapsedRealtime() + 1000
         } catch (ex: Exception) {
             Log.e(TAG, "Exception setting clipboard URI", ex)
         } finally {
@@ -179,6 +189,12 @@ class ClipboardFeature @Inject constructor(
         }
 
         val item = clip.getItemAt(0)
+        val remote = remoteClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)
+        val sameRemoteContent = remote != null && item.text?.toString() == remote.text?.toString() && item.uri == remote.uri
+        val sameRemoteChange = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && remoteClipTimestamp != null)
+            clip.description.timestamp == remoteClipTimestamp else android.os.SystemClock.elapsedRealtime() < remoteClipExpires
+        if (sameRemoteContent && sameRemoteChange) return
+        remoteClip = null
 
         val text = item.text?.toString()
         if (!text.isNullOrEmpty()) {

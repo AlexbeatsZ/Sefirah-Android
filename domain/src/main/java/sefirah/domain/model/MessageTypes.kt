@@ -23,6 +23,7 @@ enum class PlaybackInfoType {
 enum class MediaActionType {
     Play,
     Pause,
+    Stop,
     Next,
     Previous,
     Seek,

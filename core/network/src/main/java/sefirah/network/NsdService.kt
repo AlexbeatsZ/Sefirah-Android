@@ -6,14 +6,14 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import android.os.ext.SdkExtensions
 import android.util.Log
 import androidx.annotation.RequiresExtension
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import java.util.concurrent.ConcurrentHashMap
 import sefirah.domain.model.UdpBroadcast
 import java.util.concurrent.Executors
 import javax.inject.Inject
@@ -33,6 +33,7 @@ class NsdService @Inject constructor(val context: Context) {
     private var currentServiceID: String? = null
 
     private var multicastLock: WifiManager.MulticastLock
+    private val serviceCallbacks = ConcurrentHashMap<String, NsdManager.ServiceInfoCallback>()
     private val executor = Executors.newSingleThreadExecutor()
 
     init {
@@ -60,16 +61,17 @@ class NsdService @Inject constructor(val context: Context) {
     }
 
     fun stopDiscovery() {
-        try {
-            if (discoveryListener == null) return
-
-            nsdManager.stopServiceDiscovery(discoveryListener)
-            multicastLock.release()
-            discoveryListener = null
-            Log.d(TAG, "Stopped service discovery")
-        } catch (e: Exception) {
-            Log.e(TAG, "Unexpected error stopping discovery: ${e.message}", e)
+        val listener = discoveryListener
+        discoveryListener = null
+        if (listener != null) runCatching { nsdManager.stopServiceDiscovery(listener) }
+        if (Build.VERSION.SDK_INT >= 34) {
+            serviceCallbacks.values.toList().forEach { callback ->
+                runCatching { nsdManager.unregisterServiceInfoCallback(callback) }
+            }
+            serviceCallbacks.clear()
         }
+        if (multicastLock.isHeld) multicastLock.release()
+        _services.value = emptyList()
     }
 
     fun advertiseService(broadcast: UdpBroadcast, port: Int) {
@@ -86,6 +88,7 @@ class NsdService @Inject constructor(val context: Context) {
                 it.port = port
             }
             serviceInfo.setAttribute("deviceName", broadcast.deviceName)
+            serviceInfo.setAttribute("serverPort", port.toString())
 
             registrationListener = createRegistrationListener()
             nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
@@ -139,25 +142,15 @@ class NsdService @Inject constructor(val context: Context) {
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
                             && SdkExtensions.getExtensionVersion(Build.VERSION_CODES.TIRAMISU) >= 7) {
-                            // Unregister previous ServiceInfoCallback if registered
-                            try {
-                                nsdManager.unregisterServiceInfoCallback(serviceInfoCallback)
-                                Log.d(TAG, "Successfully unregistered previous ServiceInfoCallback")
-                            } catch (e: Exception) {
-                                Log.e(TAG, "No ServiceInfoCallback was registered: ${e.message}")
-                            }
-
-                            // Add a small delay to avoid race conditions
-                            Handler(Looper.getMainLooper()).postDelayed({
+                            val callback = createServiceInfoCallback(service.serviceName)
+                            if (serviceCallbacks.putIfAbsent(service.serviceName, callback) == null) {
                                 try {
-                                    nsdManager.registerServiceInfoCallback(service, executor, serviceInfoCallback)
-                                    Log.d(TAG, "Successfully registered ServiceInfoCallback")
-                                } catch (e: IllegalArgumentException) {
-                                    Log.e(TAG, "Listener already in use or issue in registration: ${e.message}")
+                                    nsdManager.registerServiceInfoCallback(service, executor, callback)
                                 } catch (e: Exception) {
-                                    Log.e(TAG, "Error registering listener: ${e.message}")
+                                    serviceCallbacks.remove(service.serviceName, callback)
+                                    throw e
                                 }
-                            }, 500)
+                            }
                         } else {
                             val resolveListener = createResolveListener()
                             nsdManager.resolveService(service, resolveListener)
@@ -172,7 +165,10 @@ class NsdService @Inject constructor(val context: Context) {
 
             override fun onServiceLost(service: NsdServiceInfo) {
                 Log.e(TAG, "Service lost: $service")
-                _services.value = _services.value.filter { it.serviceName != service.serviceName }
+                _services.update { entries -> entries.filter { it.serviceName != service.serviceName } }
+                if (Build.VERSION.SDK_INT >= 34) serviceCallbacks.remove(service.serviceName)?.let {
+                    runCatching { nsdManager.unregisterServiceInfoCallback(it) }
+                }
             }
 
             override fun onDiscoveryStopped(serviceType: String) {
@@ -200,44 +196,36 @@ class NsdService @Inject constructor(val context: Context) {
 
             override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
                 Log.i(TAG, "MDNS Resolved successfully $serviceInfo")
-                _services.value = (_services.value + serviceInfo).distinctBy { it.serviceName }
+                if (discoveryListener != null) publish(serviceInfo)
             }
         }
     }
 
-    // ServiceInfoCallback for API level 34+
-    private val serviceInfoCallback by lazy {
-        @RequiresExtension(extension = Build.VERSION_CODES.TIRAMISU, version = 7)
-        object : NsdManager.ServiceInfoCallback {
-            private var currentMonitoredService: NsdServiceInfo? = null
+    private fun publish(serviceInfo: NsdServiceInfo) {
+        _services.update { entries -> entries.filter { it.serviceName != serviceInfo.serviceName } + serviceInfo }
+    }
 
+    @RequiresExtension(extension = Build.VERSION_CODES.TIRAMISU, version = 7)
+    private fun createServiceInfoCallback(name: String): NsdManager.ServiceInfoCallback =
+        object : NsdManager.ServiceInfoCallback {
             override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
-                Log.e(TAG, "ServiceInfoCallback registration failed: $errorCode")
+                serviceCallbacks.remove(name, this)
+                Log.w(TAG, "Service callback registration failed for $name: $errorCode")
             }
 
             override fun onServiceUpdated(serviceInfo: NsdServiceInfo) {
-                Log.d(TAG, "Service updated: $serviceInfo")
-                currentMonitoredService = serviceInfo  // Store the current service
-                try {
-                    _services.value = (_services.value + serviceInfo).distinctBy { it.serviceName }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to parse service info: ${e.message}")
-                }
+                if (serviceCallbacks[name] === this && discoveryListener != null) publish(serviceInfo)
             }
 
             override fun onServiceLost() {
-                Log.e(TAG, "Service lost")
-                currentMonitoredService?.let { lostService ->
-                    _services.value = _services.value.filter { it.serviceName != lostService.serviceName }
-                }
+                if (serviceCallbacks[name] === this)
+                    _services.update { entries -> entries.filter { it.serviceName != name } }
             }
 
             override fun onServiceInfoCallbackUnregistered() {
-                Log.d(TAG, "ServiceInfoCallback unregistered")
-                currentMonitoredService = null
+                serviceCallbacks.remove(name, this)
             }
         }
-    }
 
     companion object {
         private const val TAG = "NsdService"

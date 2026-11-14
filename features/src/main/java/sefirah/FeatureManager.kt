@@ -17,6 +17,7 @@ class FeatureManager @Inject constructor(
     private val features: Set<@JvmSuppressWildcards Feature>,
     private val deviceManager: DeviceManager,
     private val preferencesRepository: PreferencesRepository,
+    private val workerManager: sefirah.worker.WorkerManager,
 ) {
 
     /** Connected: enable features whose prefs + permissions allow. */
@@ -27,6 +28,7 @@ class FeatureManager @Inject constructor(
 
     /** Disconnected: disable every feature for [deviceId]. */
     suspend fun onDisconnect(deviceId: String) {
+        workerManager.updateControlUsage(deviceId, false)
         withContext(Dispatchers.IO) {
             features.forEach { it.disable(deviceId) }
         }
@@ -42,6 +44,7 @@ class FeatureManager @Inject constructor(
     }
 
     private suspend fun apply(deviceId: String, prefs: DevicePreferences) {
+        workerManager.updateControlUsage(deviceId, prefs.allowRemoteDeviceControls)
         withContext(Dispatchers.IO) {
             features.forEach { feature ->
                 if (feature.isPrefEnabled(prefs) && feature.hasPermissions()) {

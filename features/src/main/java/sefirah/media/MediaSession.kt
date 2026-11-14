@@ -73,6 +73,7 @@ internal class MediaSession(
     }
 
     fun play(): Unit = controller.transportControls.play()
+    fun stop(): Unit = controller.transportControls.stop()
     fun pause(): Unit = controller.transportControls.pause()
     fun playPause(): Unit = if (isPlaying()) pause() else play()
     fun next(): Unit = controller.transportControls.skipToNext()

@@ -214,6 +214,7 @@ class PlaybackFeature @Inject constructor(
         try {
             when (action.actionType) {
                 MediaActionType.Play -> if (player.canPlay()) player.play()
+                MediaActionType.Stop -> player.stop()
                 MediaActionType.Pause -> if (player.canPause()) player.pause()
                 MediaActionType.Next -> if (player.canGoNext()) player.next()
                 MediaActionType.Previous -> if (player.canGoPrevious()) player.previous()

@@ -10,6 +10,8 @@ import android.os.Build
 import android.os.Environment
 import android.util.Base64
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.interfaces.NetworkManager
@@ -29,7 +31,12 @@ class DevicePresentationPublisher @Inject constructor(
     private val preferences: PreferencesRepository,
     private val devices: DeviceManager,
     private val network: NetworkManager,
+    private val infoPublisher: dagger.Lazy<DeviceInfoPublisher>,
 ) {
+    private data class CachedPreview(val key: String, val bytes: ByteArray, val id: String, val expires: Long)
+    private val imageGate = Mutex()
+    private var cachedPreview: CachedPreview? = null
+
     suspend fun localSettings(): DevicePresentation {
         val saved = runCatching { Json.decodeFromString<DevicePresentation>(
             preferences.readPresentation("local").first()) }.getOrNull()
@@ -39,11 +46,17 @@ class DevicePresentationPublisher @Inject constructor(
             orientation = if (tablet) "landscape" else "portrait", aspectRatio = if (tablet) "4:3" else "9:20")
     }
 
-    suspend fun metadata(peerId: String?, includeImage: Boolean = false): DevicePresentation {
+    suspend fun metadata(peerId: String?, includeImage: Boolean = false): DevicePresentation = imageGate.withLock {
         val settings = localSettings().copy(wallpaperSource = "none", wallpaperId = null, wallpaper = null)
         // One global consent covers every paired device; there is no per-device gate.
         if (preferences.readPresentation("share").first() != "true") return settings
         val selected = File(context.filesDir, "device-preview.jpg")
+        val key = if (selected.exists()) "selected:${selected.lastModified()}:${selected.length()}"
+            else "wallpaper:${runCatching { WallpaperManager.getInstance(context).getWallpaperId(WallpaperManager.FLAG_SYSTEM) }.getOrDefault(-1)}"
+        val cached = cachedPreview?.takeIf { it.key == key && it.expires > android.os.SystemClock.elapsedRealtime() }
+        if (cached != null) return@withLock settings.copy(
+            wallpaperSource = if (selected.exists()) "userSelected" else "wallpaper", wallpaperId = cached.id,
+            wallpaper = if (includeImage) Base64.encodeToString(cached.bytes, Base64.NO_WRAP) else null)
         val bitmap = if (selected.exists()) BitmapFactory.decodeFile(selected.path) else try {
             val drawable = WallpaperManager.getInstance(context).drawable ?: return settings
             if (drawable.intrinsicWidth <= 0 || drawable.intrinsicHeight <= 0) return settings
@@ -60,22 +73,21 @@ class DevicePresentationPublisher @Inject constructor(
         if (bytes.size > 65536) return settings
         if (preferences.readPresentation("share").first() != "true") return settings
         val id = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        return settings.copy(wallpaperSource = if (selected.exists()) "userSelected" else "wallpaper",
+        cachedPreview = CachedPreview(key, bytes, id, android.os.SystemClock.elapsedRealtime() + 30_000)
+        return@withLock settings.copy(wallpaperSource = if (selected.exists()) "userSelected" else "wallpaper",
             wallpaperId = id, wallpaper = if (includeImage) Base64.encodeToString(bytes, Base64.NO_WRAP) else null)
     }
 
     suspend fun publishAll() {
         devices.pairedDevices.value.filter { it.connectionState.isConnected && it.presentation?.version == 1 }.forEach { peer ->
-            network.sendMessage(peer.deviceId, DeviceInfo(devices.localDevice.deviceName, presentation = metadata(peer.deviceId)))
+            infoPublisher.get().publish(peer)
         }
     }
 
     suspend fun receive(peer: PairedDevice, info: DeviceInfo): PairedDevice {
         info.requestedWallpaperId?.let { id ->
             if (peer.presentation?.version == 1 && id.length == 64) {
-                val current = metadata(peer.deviceId, true)
-                if (current.wallpaperId == id)
-                    network.sendMessage(peer.deviceId, DeviceInfo(devices.localDevice.deviceName, presentation = current))
+                infoPublisher.get().publish(peer, requestedWallpaperId = id)
             }
         }
         val incoming = info.presentation ?: return peer.copy(avatar = if (peer.presentation == null) null else peer.avatar)

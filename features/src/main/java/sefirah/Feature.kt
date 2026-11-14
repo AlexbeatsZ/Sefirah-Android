@@ -14,11 +14,11 @@ abstract class Feature(
     protected val lifecycleMutex = Mutex()
 
     /** Device IDs for which this feature is currently active. */
-    protected val enabledDevices = mutableSetOf<String>()
+    protected val enabledDevices = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     /** Read-only view of [enabledDevices] for subclasses and callers that send to actives. */
     val activeDeviceIds: Set<String>
-        get() = enabledDevices
+        get() = enabledDevices.toSet()
 
     /** Whether this feature is turned on in [prefs] for the device. */
     abstract fun isPrefEnabled(prefs: DevicePreferences): Boolean

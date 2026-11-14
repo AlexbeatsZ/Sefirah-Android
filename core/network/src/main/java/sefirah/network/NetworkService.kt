@@ -32,6 +32,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import sefirah.FeatureManager
@@ -55,7 +56,6 @@ import sefirah.domain.model.BaseRemoteDevice
 import sefirah.domain.model.ClipboardInfo
 import sefirah.domain.model.ConnectionDetails
 import sefirah.domain.model.ConnectionState
-import sefirah.domain.model.DeviceConnection
 import sefirah.domain.model.DeviceInfo
 import sefirah.domain.model.Disconnect
 import sefirah.domain.model.DiscoveredDevice
@@ -87,6 +87,8 @@ import kotlin.time.Duration.Companion.milliseconds
 @AndroidEntryPoint
 class NetworkService : Service() {
     @Inject lateinit var socketFactory: SocketFactory
+
+    @Inject lateinit var deviceInfoPublisher: sefirah.status.DeviceInfoPublisher
 
     @Inject lateinit var presentationPublisher: sefirah.status.DevicePresentationPublisher
 
@@ -150,8 +152,9 @@ class NetworkService : Service() {
     private var tcpServerSocket: javax.net.ssl.SSLServerSocket? = null
     private var serverAcceptJob: Job? = null
 
-    private val connections = mutableMapOf<String, DeviceConnection>()
+    private val connections = ConcurrentHashMap<String, DeviceConnection>()
 
+    private val connectionGates = ConcurrentHashMap<String, Mutex>()
     private val connectionAttempts = ConcurrentHashMap<String, Mutex>()
     private val reconnector by lazy {
         PairedDeviceReconnector(scope, deviceManager::getPairedDevice) {
@@ -317,7 +320,9 @@ class NetworkService : Service() {
     private suspend fun handleIncomingConnection(sslSocket: SSLSocket) {
         try {
             withContext(Dispatchers.IO) {
+                sslSocket.soTimeout = 10_000
                 sslSocket.startHandshake()
+                sslSocket.soTimeout = 0
             }
 
             val readChannel = sslSocket.inputStream.toByteReadChannel()
@@ -380,31 +385,31 @@ class NetworkService : Service() {
         certificate: X509Certificate
     ) {
 
-        if (!certificate.encoded.contentEquals(device.certificate)) {
+        if (device.connectionState.isForcedDisconnect || !certificate.encoded.contentEquals(device.certificate)) {
             Log.w(TAG, "Certificate does not match pinned cert for paired device ${authMessage.deviceId}")
             sslSocket.close()
             return
         }
 
         val connection = DeviceConnection(device.deviceId, sslSocket, readChannel, writeChannel)
-        setConnection(device.deviceId, connection)
-
-        val updatedDevice = device.copy(
-            deviceName = authMessage.deviceName,
-            lastConnected = System.currentTimeMillis(),
-            addresses = if (device.addresses.none { it.address == address }) {
-                device.addresses + AddressEntry(address)
-            } else {
-                device.addresses
-            },
-            address = address,
-            connectionState = ConnectionState.Connected,
-        )
+        val connectedAt = System.currentTimeMillis()
 
         sendAuthMessage(writeChannel)
 
-        deviceManager.addOrUpdatePairedDevice(updatedDevice)
-        finalizeConnection(updatedDevice, false)
+        var connected: PairedDevice? = null
+        setConnection(device.deviceId, connection) {
+            connected = deviceManager.updatePairedDevice(device.deviceId) { current ->
+                check(!current.connectionState.isForcedDisconnect && current.certificate.contentEquals(certificate.encoded))
+                current.copy(
+                    deviceName = authMessage.deviceName,
+                    lastConnected = connectedAt,
+                    addresses = if (current.addresses.any { it.address == address }) current.addresses else current.addresses + AddressEntry(address),
+                    address = address,
+                    connectionState = ConnectionState.Connected,
+                )
+            }
+        }
+        finalizeConnection(connected ?: return, false)
     }
 
     private suspend fun authenticateNewDevice(
@@ -434,8 +439,10 @@ class NetworkService : Service() {
         )
 
         val connection = DeviceConnection(newDevice.deviceId, sslSocket, readChannel, writeChannel)
-        setConnection(newDevice.deviceId, connection)
-        deviceManager.addOrUpdateDiscoveredDevice(newDevice)
+        setConnection(newDevice.deviceId, connection) {
+            deviceManager.addOrUpdateDiscoveredDevice(newDevice)
+        }
+        startListeningForDevice(connection)
     }
 
     suspend fun connectPaired(device: PairedDevice) = connectPaired(device, automatic = false)
@@ -451,8 +458,8 @@ class NetworkService : Service() {
             if (stored.connectionState.isConnectedOrConnecting ||
                 (automatic && stored.connectionState.isForcedDisconnect)) return
             // Discovery can supply a newly observed address/port before it is persisted.
-            val current = if (automatic) stored else device.copy(certificate = stored.certificate)
-            deviceManager.addOrUpdatePairedDevice(current.copy(connectionState = ConnectionState.Connecting(current.deviceId)))
+            val current = stored
+            deviceManager.updatePairedDevice(current.deviceId) { it.copy(connectionState = ConnectionState.Connecting(current.deviceId)) }
             started = true
             val port = current.port ?: PORT_RANGE.first
             val sslSocket = run {
@@ -479,9 +486,6 @@ class NetworkService : Service() {
             sendAuthMessage(writeChannel)
 
             val connection = DeviceConnection(device.deviceId, sslSocket, readChannel, writeChannel)
-            setConnection(device.deviceId, connection)
-            installed = true
-
             val remoteAddress = (sslSocket.remoteSocketAddress as? java.net.InetSocketAddress)?.address?.hostAddress ?: ""
             val updatedDevice = latest.copy(
                 lastConnected = System.currentTimeMillis(),
@@ -489,7 +493,15 @@ class NetworkService : Service() {
                 port = port,
                 address = remoteAddress
             )
-            deviceManager.addOrUpdatePairedDevice(updatedDevice)
+            setConnection(device.deviceId, connection) {
+                checkNotNull(deviceManager.updatePairedDevice(device.deviceId) { current ->
+                    check(!current.connectionState.isForcedDisconnect && !current.connectionState.isConnected &&
+                        current.certificate.contentEquals(latest.certificate))
+                    current.copy(lastConnected = updatedDevice.lastConnected, connectionState = ConnectionState.Connected,
+                        port = port, address = remoteAddress)
+                })
+            }
+            installed = true
 
             Log.d(TAG, "Device ${updatedDevice.deviceId} connected")
             finalizeConnection(updatedDevice, false)
@@ -508,7 +520,9 @@ class NetworkService : Service() {
                     withContext(NonCancellable) {
                         val latest = deviceManager.getPairedDevice(device.deviceId)
                         if (latest?.connectionState?.isConnecting == true) {
-                            deviceManager.addOrUpdatePairedDevice(latest.copy(connectionState = ConnectionState.Disconnected()))
+                            deviceManager.updatePairedDevice(latest.deviceId) { current ->
+                                if (current.connectionState.isConnecting) current.copy(connectionState = ConnectionState.Disconnected()) else current
+                            }
                         }
                     }
                 }
@@ -581,63 +595,53 @@ class NetworkService : Service() {
             )
 
             val connection = DeviceConnection(connectedDevice.deviceId, sslSocket, readChannel, writeChannel)
-            setConnection(connectedDevice.deviceId, connection)
-
-            deviceManager.addOrUpdateDiscoveredDevice(connectedDevice)
+            setConnection(connectedDevice.deviceId, connection) {
+                deviceManager.addOrUpdateDiscoveredDevice(connectedDevice)
+            }
+            startListeningForDevice(connection)
         } catch (e: Exception) {
             Log.e(TAG, "Error in connectTo", e)
         }
     }
 
-    @SuppressLint("MissingPermission")
-    fun sendDeviceInfo(device: PairedDevice) {
-        try {
-            val localPhoneNumbers = try {
-                TelephonyHelper.getAllPhoneNumbers(this).map { it.toDto() }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to get local phone numbers", e)
-                emptyList()
-            }
-
-            val deviceInfo = DeviceInfo(
-                deviceName = deviceManager.localDevice.deviceName,
-                phoneNumbers = localPhoneNumbers,
-                controls = runBlocking { deviceControlHandler.capabilities(device.deviceId) },
-                presentation = runBlocking { presentationPublisher.metadata(device.deviceId) }
-            )
-            sendMessage(device.deviceId, deviceInfo)
-            Log.d(TAG, "DeviceInfo sent to ${device.deviceId}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to send DeviceInfo to ${device.deviceId}", e)
-        }
+    suspend fun sendDeviceInfo(device: PairedDevice) {
+        deviceInfoPublisher.publish(device, includePhoneNumbers = true)
     }
 
     suspend fun disconnect(deviceId: String) {
         deviceManager.getPairedDevice(deviceId)?.let {
             if (it.connectionState.isConnected) {
-                sendMessage(it.deviceId, Disconnect)
+                connections[it.deviceId]?.sendDisconnect()
             }
             disconnectDevice(it, true)
         }
     }
 
-    suspend fun disconnectDevice(device: PairedDevice, forcedDisconnect: Boolean = false) {
-        if (forcedDisconnect) reconnector.cancel(device.deviceId)
-        Log.i(TAG, "Disconnected ${device.deviceName}")
-
-        deviceManager.addOrUpdatePairedDevice(device.copy(connectionState = ConnectionState.Disconnected(forcedDisconnect), controls = null))
-        removeConnection(device.deviceId)
-        try {
+    suspend fun disconnectDevice(device: PairedDevice, forcedDisconnect: Boolean = false, expected: DeviceConnection? = null) {
+        val gate = connectionGates.getOrPut(device.deviceId) { Mutex() }
+        val closed = gate.withLock {
+            if (expected != null && connections[device.deviceId] !== expected) return
+            if (forcedDisconnect) reconnector.cancel(device.deviceId)
+            val previous = connections.remove(device.deviceId)
+            deviceManager.updatePairedDevice(device.deviceId) {
+                it.copy(connectionState = ConnectionState.Disconnected(forcedDisconnect), controls = null)
+            }
             featureManager.onDisconnect(device.deviceId)
-        } finally {
             if (!forcedDisconnect) reconnector.schedule(device.deviceId)
+            previous
         }
+        closed?.close()
     }
 
-    private suspend fun disconnectDevice(device: DiscoveredDevice) {
-        Log.i(TAG, "Disconnected ${device.deviceName}")
-        deviceManager.removeDiscoveredDevice(device.deviceId)
-        removeConnection(device.deviceId)
+    private suspend fun disconnectDevice(device: DiscoveredDevice, expected: DeviceConnection? = null) {
+        val gate = connectionGates.getOrPut(device.deviceId) { Mutex() }
+        val closed = gate.withLock {
+            if (expected != null && connections[device.deviceId] !== expected) return
+            val previous = connections.remove(device.deviceId)
+            deviceManager.removeDiscoveredDevice(device.deviceId)
+            previous
+        }
+        closed?.close()
     }
 
     suspend fun handlePairMessage(device: DiscoveredDevice, message: PairMessage) {
@@ -687,7 +691,10 @@ class NetworkService : Service() {
             deviceName = deviceInfo.deviceName,
             controls = deviceInfo.controls ?: device.controls
         )
-        deviceManager.addOrUpdatePairedDevice(updatedDevice)
+        deviceManager.updatePairedDevice(device.deviceId) { current ->
+            current.copy(deviceName = updatedDevice.deviceName, controls = updatedDevice.controls,
+                presentation = updatedDevice.presentation, avatar = updatedDevice.avatar)
+        }
         Log.d(TAG, "DeviceInfo updated for ${device.deviceId}")
     }
 
@@ -705,14 +712,20 @@ class NetworkService : Service() {
     private fun startListeningForDevice(connection: DeviceConnection) {
         connection.startListening(
             getDevice = { deviceManager.getDevice(it) },
-            onMessage = { device, message -> scope.launch { handleMessage(device, message) } },
+            onMessage = { device, message ->
+                if (connections[device.deviceId] === connection) {
+                    if (message is Disconnect && device is PairedDevice)
+                        disconnectDevice(device, true, expected = connection)
+                    else handleMessage(device, message)
+                }
+            },
             onClose = { closed ->
                 scope.launch {
                     val id = closed.deviceId
                     if (connections[id] === closed) {
                         when (val device = deviceManager.getDevice(id)) {
-                            is PairedDevice -> disconnectDevice(device)
-                            is DiscoveredDevice -> disconnectDevice(device)
+                            is PairedDevice -> disconnectDevice(device, expected = closed)
+                            is DiscoveredDevice -> disconnectDevice(device, expected = closed)
                         }
                     }
                 }
@@ -724,6 +737,7 @@ class NetworkService : Service() {
         device: PairedDevice,
         isNewDevice: Boolean,
     ) {
+        connections[device.deviceId]?.let { startListeningForDevice(it) }
         sendDeviceInfo(device)
         deviceControlHandler.sendDeviceStatus(device.deviceId)
 
@@ -734,7 +748,10 @@ class NetworkService : Service() {
 
         networkDiscovery.saveCurrentNetworkAsTrusted()
 
-        featureManager.onConnect(device.deviceId)
+        connectionGates.getOrPut(device.deviceId) { Mutex() }.withLock {
+            if (deviceManager.getPairedDevice(device.deviceId)?.connectionState?.isConnected == true)
+                featureManager.onConnect(device.deviceId)
+        }
     }
 
     private suspend fun sendAuthMessage(writeChannel: ByteWriteChannel) {
@@ -743,7 +760,8 @@ class NetworkService : Service() {
             localDevice.deviceId,
             localDevice.deviceName,
             SslHelper.publicKeyString,
-            localDevice.model
+            localDevice.model,
+            protocolVersion = 1,
         )
         val jsonMessage = MessageSerializer.serialize(authenticationMessage)
         writeChannel.writeStringUtf8("$jsonMessage\n")
@@ -791,10 +809,12 @@ class NetworkService : Service() {
     }
 
     suspend fun approveDeviceConnection(deviceId: String) {
+        val pending = deviceManager.pendingDeviceApproval.value ?: return
+        val discoveredDevice = deviceManager.getDiscoveredDevice(deviceId) ?: return
+        if (pending.deviceId != deviceId || pending.verificationCode != discoveredDevice.verificationCode) return
+        check(sendMessage(deviceId, PairMessage(true))) { "No live pairing connection" }
         clearPendingApproval(deviceId)
         cancelPairingVerificationNotification(deviceId)
-
-        val discoveredDevice = deviceManager.getDiscoveredDevice(deviceId) ?: return
 
         val pairedDevice = PairedDevice(
             deviceId = discoveredDevice.deviceId,
@@ -807,9 +827,6 @@ class NetworkService : Service() {
             address = discoveredDevice.address,
             certificate = discoveredDevice.certificate.encoded
         )
-
-        // Send pairing message before removing DiscoveredDevice
-        sendMessage(deviceId, PairMessage(true))
 
         deviceManager.removeDiscoveredDevice(deviceId)
         deviceManager.addOrUpdatePairedDevice(pairedDevice)
@@ -834,14 +851,25 @@ class NetworkService : Service() {
     }
 
     // Connection management methods
-    private suspend fun setConnection(deviceId: String, connection: DeviceConnection) {
-        removeConnection(deviceId)
-        connections[deviceId] = connection
-        startListeningForDevice(connection)
+    private suspend fun setConnection(deviceId: String, connection: DeviceConnection, publishState: suspend () -> Unit) {
+        val previous = connectionGates.getOrPut(deviceId) { Mutex() }.withLock {
+            val old = connections.put(deviceId, connection)
+            try {
+                publishState()
+                old
+            } catch (e: Exception) {
+                if (old == null) connections.remove(deviceId, connection)
+                else connections.replace(deviceId, connection, old)
+                connection.close()
+                throw e
+            }
+        }
+        previous?.close()
     }
 
     private suspend fun removeConnection(deviceId: String) {
-        connections.remove(deviceId)?.close()
+        val previous = connectionGates.getOrPut(deviceId) { Mutex() }.withLock { connections.remove(deviceId) }
+        previous?.close()
     }
 
     fun sendMessage(deviceId: String, message: SocketMessage): Boolean {
@@ -857,13 +885,12 @@ class NetworkService : Service() {
             Log.e(TAG, "Error closing TCP server", e)
         }
 
-        // Clean disconnect all peers
         runBlocking {
-            deviceManager.pairedDevices.value.forEach { device ->
-                if (device.connectionState.isConnected) {
-                    sendMessage(device.deviceId, Disconnect)
-                    disconnectDevice(device, true)
-                }
+            connections.keys.toList().forEach { id ->
+                removeConnection(id)
+                deviceManager.removeDiscoveredDevice(id)
+                deviceManager.updatePairedDevice(id) { it.copy(connectionState = ConnectionState.Disconnected(), controls = null) }
+                featureManager.onDisconnect(id)
             }
         }
 

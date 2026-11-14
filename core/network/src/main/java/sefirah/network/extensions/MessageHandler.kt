@@ -1,6 +1,8 @@
 package sefirah.network.extensions
 
 import android.util.Log
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.CancellationException
 import sefirah.domain.model.ActionInfo
 import sefirah.domain.model.ActionList
 import sefirah.domain.model.AudioDeviceInfo
@@ -46,6 +48,16 @@ suspend fun NetworkService.handleMessage(device: BaseRemoteDevice, message: Sock
         }
 
         if (device is PairedDevice) {
+            val prefs = preferencesRepository.preferenceSettings(device.deviceId).first()
+            val allowed = when (message) {
+                is RingerModeState, is DndState -> prefs.allowRemoteDeviceControls
+                is AudioStreamState -> prefs.allowRemoteDeviceControls && prefs.remoteVolumeControl
+                is ClipboardInfo -> prefs.clipboardSync &&
+                    (!message.clipboardType.startsWith("image/") || prefs.imageClipboard)
+                is ClipboardTransfer -> prefs.clipboardSync && prefs.imageClipboard
+                else -> true
+            }
+            if (!allowed) return
             when (message) {
                 is DeviceInfo -> handleDeviceInfo(message, device)
                 is ClearNotifications -> notificationFeature.removeAllNotification()
@@ -81,6 +93,8 @@ suspend fun NetworkService.handleMessage(device: BaseRemoteDevice, message: Sock
                 else -> {}
             }
         }
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         Log.e(TAG, "Error handling message for device ${device.deviceId}", e)
     }

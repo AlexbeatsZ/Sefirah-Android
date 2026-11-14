@@ -4,21 +4,19 @@ import android.content.Context
 import android.util.Log
 import io.ktor.utils.io.cancel
 import io.ktor.utils.io.jvm.javaio.toByteReadChannel
-import io.ktor.utils.io.readUTF8Line
 import io.ktor.utils.io.streams.asByteWriteChannel
 import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import sefirah.common.R
 import sefirah.common.notifications.NotificationCenter
 import java.io.IOException
 import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Handles sending files to a remote device.
@@ -56,21 +54,20 @@ class SendFileHandler(
                 it.showPreparing(title)
             }
 
+            serverSocket.soTimeout = 30_000
             sslSocket = withContext(Dispatchers.IO) {
                 serverSocket.accept() as? SSLSocket
             } ?: throw IOException("Failed to accept SSL connection")
 
+            sslSocket.soTimeout = 30_000
+            sslSocket.startHandshake()
             val readChannel = sslSocket.inputStream.toByteReadChannel()
             val writeChannel = sslSocket.outputStream.asByteWriteChannel()
 
             files.forEachIndexed { index, file ->
                 currentCoroutineContext().ensureActive()
 
-                withTimeout(5000.milliseconds) {
-                    if (readChannel.readUTF8Line() != TRANSFER_START_MESSAGE) {
-                        throw IOException("Invalid transfer handshake")
-                    }
-                }
+                TransferProtocol.expect(readChannel, TRANSFER_START_MESSAGE)
 
                 val metadata = file.metadata
 
@@ -95,10 +92,7 @@ class SendFileHandler(
                     }
                 }
 
-                val message = readChannel.readUTF8Line()
-                if (message != TRANSFER_COMPLETE_MESSAGE) {
-                    throw IOException("Invalid transfer confirmation: '$message'")
-                }
+                TransferProtocol.expect(readChannel, TRANSFER_COMPLETE_MESSAGE)
             }
 
             notification?.showCompleted(files.size)
@@ -113,8 +107,9 @@ class SendFileHandler(
             notification?.showError(e.message ?: "Transfer failed")
             throw e
         } finally {
-            sslSocket?.close()
-            withContext(Dispatchers.IO) { serverSocket.close() }
+            withContext(NonCancellable + Dispatchers.IO) {
+                try { sslSocket?.close() } finally { serverSocket.close() }
+            }
         }
     }
 

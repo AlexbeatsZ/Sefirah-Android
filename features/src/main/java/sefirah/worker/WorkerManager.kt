@@ -28,6 +28,7 @@ import javax.inject.Singleton
 class WorkerManager @Inject constructor(
     private val context: Context,
     private val networkManager: NetworkManager,
+    private val preferences: sefirah.domain.interfaces.PreferencesRepository,
 ) {
     enum class RootStatus { Idle, Starting, Ready, Unavailable }
 
@@ -41,6 +42,9 @@ class WorkerManager @Inject constructor(
 
     @Volatile private var registration: Registration? = null
     private val session = ClipboardWorkerSession()
+    private val controlConsumers = mutableSetOf<String>()
+    @Volatile private var clipboardEnabled = false
+    private var preferRoot = false
     private val mode get() = session.mode
     private val shizukuEpoch = AtomicInteger()
     private var attemptedLegacy: Triple<ClipboardWorkerSession.Mode, Boolean, Int>? = null
@@ -56,6 +60,12 @@ class WorkerManager @Inject constructor(
     init {
         Shizuku.addBinderReceivedListenerSticky(shizukuBinderReceivedListener)
         scope.launch {
+            preferences.readRootClipboardEnabled().collect { enabled ->
+                synchronized(lock) { preferRoot = enabled }
+                updateUsage()
+            }
+        }
+        scope.launch {
             for (event in refresh) {
                 try {
                     reconcile()
@@ -67,10 +77,25 @@ class WorkerManager @Inject constructor(
     }
 
     fun updateClipboardWatcher(enabled: Boolean, preferRoot: Boolean = false) {
+        synchronized(lock) {
+            clipboardEnabled = enabled
+            this.preferRoot = preferRoot
+        }
+        updateUsage()
+    }
+
+    fun updateControlUsage(deviceId: String, enabled: Boolean) {
+        synchronized(lock) {
+            if (enabled) controlConsumers.add(deviceId) else controlConsumers.remove(deviceId)
+        }
+        updateUsage()
+    }
+
+    private fun updateUsage() {
         val revoked = synchronized(lock) {
-            if (!session.update(enabled, preferRoot)) return
-            _rootStatus.value = RootStatus.Idle
-            registration?.takeIf { it.root && !mode.preferRoot }?.also { registration = null }
+            val changed = session.update(clipboardEnabled || controlConsumers.isNotEmpty(), preferRoot)
+            if (changed) _rootStatus.value = RootStatus.Idle
+            registration?.takeIf { !mode.enabled || (it.root && !mode.preferRoot) }?.also { registration = null }
         }
         if (revoked != null) scope.launch { destroy(revoked.service) }
         refresh.trySend(Unit)
@@ -108,7 +133,7 @@ class WorkerManager @Inject constructor(
 
         if (mode !== current) return
         if (isWorkerAlive()) {
-            requestStartWatching()
+            if (clipboardEnabled) requestStartWatching() else requestStopWatching()
             attemptedLegacy = null
         } else {
             val shizuku = ShizukuHelper.isAuthorized()
@@ -154,7 +179,7 @@ class WorkerManager @Inject constructor(
 
     fun isActiveWorker(uid: Int, pid: Int): Boolean {
         val current = registration
-        return current != null && mode.enabled && current.uid == uid && current.pid == pid
+        return current != null && clipboardEnabled && mode.enabled && current.uid == uid && current.pid == pid
     }
 
     fun registerWorker(workerBinder: IBinder, uid: Int, pid: Int, token: String?): Boolean {

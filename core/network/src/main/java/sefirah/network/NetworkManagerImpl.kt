@@ -51,15 +51,15 @@ class NetworkManagerImpl @Inject constructor(
     }
 
     override suspend fun connectPaired(device: PairedDevice) {
-        networkService?.connectPaired(device)
+        requireService().connectPaired(device)
     }
 
     override suspend fun connectTo(connectionDetails: ConnectionDetails) {
-        networkService?.connectTo(connectionDetails)
+        requireService().connectTo(connectionDetails)
     }
 
     override suspend fun disconnect(deviceId: String) {
-        networkService?.disconnect(deviceId)
+        requireService().disconnect(deviceId)
     }
 
     override fun broadcastMessage(message: SocketMessage) {
@@ -71,7 +71,7 @@ class NetworkManagerImpl @Inject constructor(
     }
 
     override suspend fun approveDeviceConnection(deviceId: String) {
-        networkService?.approveDeviceConnection(deviceId)
+        requireService().approveDeviceConnection(deviceId)
     }
 
     override suspend fun pairDevice(deviceId: String, verificationCode: String, approve: Boolean) {
@@ -80,8 +80,10 @@ class NetworkManagerImpl @Inject constructor(
     }
 
     override suspend fun rejectDeviceConnection(deviceId: String) {
-        networkService?.rejectDeviceConnection(deviceId)
+        requireService().rejectDeviceConnection(deviceId)
     }
+
+    private fun requireService() = checkNotNull(networkService) { "Network service is not bound; start it first" }
 
     companion object {
         private const val TAG = "NetworkManager"

@@ -31,6 +31,10 @@ interface DeviceManager {
     suspend fun removeDiscoveredDevice(deviceId: String)
     
     suspend fun addOrUpdatePairedDevice(device: PairedDevice)
+    suspend fun updatePairedDevice(deviceId: String, update: (PairedDevice) -> PairedDevice): PairedDevice? {
+        val current = getPairedDevice(deviceId) ?: return null
+        return update(current).also { addOrUpdatePairedDevice(it) }
+    }
     suspend fun removePairedDevice(deviceId: String)
 }
 

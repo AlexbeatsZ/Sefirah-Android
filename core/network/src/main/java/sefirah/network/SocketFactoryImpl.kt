@@ -7,7 +7,7 @@ import io.ktor.network.sockets.InetSocketAddress
 import io.ktor.network.sockets.aSocket
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.ensureActive
 import sefirah.domain.interfaces.SocketFactory
 import sefirah.network.util.SslHelper
 import javax.inject.Inject
@@ -21,25 +21,27 @@ class SocketFactoryImpl @Inject constructor() : SocketFactory {
     val selectorManager = SelectorManager(Dispatchers.IO)
 
     override suspend fun tcpClientSocket(address: String, port: Int, certificate: ByteArray?): SSLSocket? {
-        return try {
-            Log.d(TAG, "Connecting to $address:$port")
-            val sslContext = SslHelper.sslContext(certificate)
-            withTimeoutOrNull(3000L.milliseconds) {
-                withContext(Dispatchers.IO) {
-                    (sslContext.socketFactory.createSocket(address, port) as SSLSocket).apply {
-                        keepAlive = true
-                        startHandshake()
-                    }
-                }
-            }?.also {
-                Log.d(TAG, "Connected to ${it.remoteSocketAddress}")
-            } ?: run {
-                Log.e(TAG, "Connection timed out to $address:$port")
+        var acquired: SSLSocket? = null
+        return try { withContext(Dispatchers.IO) {
+            val socket = SslHelper.sslContext(certificate).socketFactory.createSocket() as SSLSocket
+            acquired = socket
+            try {
+                socket.keepAlive = true
+                socket.connect(java.net.InetSocketAddress(address, port), 3000)
+                socket.soTimeout = 10_000
+                socket.startHandshake()
+                kotlinx.coroutines.currentCoroutineContext().ensureActive()
+                socket.soTimeout = 0
+                socket
+            } catch (e: Exception) {
+                socket.close()
+                if (e is kotlinx.coroutines.CancellationException) throw e
+                Log.e(TAG, "Connection failed to $address:$port", e)
                 null
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Connection failed to $address:$port", e)
-            null
+        } } catch (e: kotlinx.coroutines.CancellationException) {
+            acquired?.close()
+            throw e
         }
     }
 

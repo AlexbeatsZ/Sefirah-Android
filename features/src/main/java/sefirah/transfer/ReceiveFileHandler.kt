@@ -53,6 +53,7 @@ class ReceiveFileHandler(
     }
 
     suspend fun receive(): Uri? {
+        clientSocket.soTimeout = 30_000
         val readChannel = clientSocket.inputStream.toByteReadChannel()
         val writeChannel = clientSocket.outputStream.asByteWriteChannel()
         var lastFileUri: Uri? = null
@@ -95,9 +96,9 @@ class ReceiveFileHandler(
             notification?.showError(e.message ?: "Transfer failed")
             throw e
         } finally {
-            readChannel.cancel()
-            writeChannel.flushAndClose()
             try { clientSocket.close() } catch (_: Exception) { }
+            readChannel.cancel()
+            writeChannel.cancel(IOException("Transfer closed"))
         }
     }
 
@@ -107,10 +108,11 @@ class ReceiveFileHandler(
         metadata: FileMetadata,
         fileIndex: Int
     ): Uri {
+        require(metadata.fileSize >= 0) { "Invalid file size" }
         val fileUri = createOutputUri(metadata)
 
         try {
-            writeChannel.writeStringUtf8(SendFileHandler.TRANSFER_START_MESSAGE)
+            writeChannel.writeStringUtf8(SendFileHandler.TRANSFER_START_MESSAGE + "\n")
             writeChannel.flush()
 
             context.contentResolver.openOutputStream(fileUri)?.use { output ->
@@ -141,7 +143,7 @@ class ReceiveFileHandler(
                     throw IOException("Incomplete transfer: received $currentFileReceived bytes out of ${metadata.fileSize}")
                 }
 
-                writeChannel.writeStringUtf8(SendFileHandler.TRANSFER_COMPLETE_MESSAGE)
+                writeChannel.writeStringUtf8(SendFileHandler.TRANSFER_COMPLETE_MESSAGE + "\n")
                 writeChannel.flush()
             } ?: throw IOException("Failed to open output stream")
 
@@ -154,6 +156,8 @@ class ReceiveFileHandler(
     }
 
     private suspend fun createOutputUri(metadata: FileMetadata): Uri {
+        require(metadata.fileName.isNotBlank() && metadata.fileName !in listOf(".", "..") &&
+            metadata.fileName.none { it == '/' || it == '\\' || it == ':' || it.isISOControl() }) { "Invalid file name" }
         if (useTempStorage) {
             val extension = metadata.mimeType
                 .substringAfter('/')

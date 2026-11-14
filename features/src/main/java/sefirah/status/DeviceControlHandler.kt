@@ -38,6 +38,7 @@ class DeviceControlHandler @Inject constructor(
     private val preferences: sefirah.domain.interfaces.PreferencesRepository,
     private val devices: sefirah.domain.interfaces.DeviceManager,
     private val workerManager: sefirah.worker.WorkerManager,
+    private val deviceInfoPublisher: DeviceInfoPublisher,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
@@ -229,23 +230,19 @@ class DeviceControlHandler @Inject constructor(
     }
 
     fun setStreamVolume(deviceId: String, message: AudioStreamState) {
-        val maxVolume = audioManager.getStreamMaxVolume(message.streamType)
-        val normalizedVolume = (message.level * maxVolume / 100).coerceIn(0, maxVolume)
-        Log.d(TAG, "incoming level: ${message.level}, max: $maxVolume, normalized: $normalizedVolume}")
+        if (message.streamType !in listOf(AudioManager.STREAM_VOICE_CALL, AudioManager.STREAM_RING,
+                AudioManager.STREAM_MUSIC, AudioManager.STREAM_ALARM, AudioManager.STREAM_NOTIFICATION) ||
+            message.level !in 0..100) return
         try {
+            val maxVolume = audioManager.getStreamMaxVolume(message.streamType)
+            if (maxVolume <= 0) return
+            val normalizedVolume = message.level * maxVolume / 100
             audioManager.setStreamVolume(message.streamType, normalizedVolume, 0)
+            val actualVolume = audioManager.getStreamVolume(message.streamType)
+            if (actualVolume != normalizedVolume)
+                networkManager.sendMessage(deviceId, message.copy(level = 100 * actualVolume / maxVolume))
         } catch (e: Exception) {
             Log.e(TAG, "Error setting audio level for stream ${message.streamType}", e)
-        } finally {
-            // Read back the actual volume
-            // since setStreamVolume can silently fail due to permissions, thank you OnePlus!
-            val actualVolume = audioManager.getStreamVolume(message.streamType)
-            // If the volume doesn't match, send back the actual volume
-            if (actualVolume != normalizedVolume) {
-                val level = 100 * actualVolume / maxVolume
-                val actualMessage = message.copy(level = level)
-                networkManager.sendMessage(deviceId, actualMessage)
-            }
         }
     }
 
@@ -253,9 +250,7 @@ class DeviceControlHandler @Inject constructor(
         scope.launch {
             val peer = devices.getPairedDevice(deviceId) ?: return@launch
             if (peer.connectionState.isConnected && peer.controls?.version == 1) {
-                networkManager.sendMessage(deviceId, sefirah.domain.model.DeviceInfo(
-                    devices.localDevice.deviceName,
-                    controls = capabilities(deviceId)))
+                deviceInfoPublisher.publish(peer)
             }
         }
         val batteryStatus = getBatteryStatus()
@@ -334,7 +329,7 @@ class DeviceControlHandler @Inject constructor(
         )
         return streamTypes.map { streamType ->
             val level = 100 * audioManager.getStreamVolume(streamType) /
-                audioManager.getStreamMaxVolume(streamType)
+                audioManager.getStreamMaxVolume(streamType).coerceAtLeast(1)
             AudioStreamState(streamType, level)
         }
     }

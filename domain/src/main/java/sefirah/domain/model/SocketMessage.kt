@@ -47,7 +47,8 @@ data class Authentication(
     val deviceId: String,
     val deviceName: String,
     val publicKey: String,
-    val model: String
+    val model: String,
+    val protocolVersion: Int = 0,
 ) : SocketMessage()
 
 @Serializable
