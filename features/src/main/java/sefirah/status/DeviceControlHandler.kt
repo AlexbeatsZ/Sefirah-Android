@@ -23,7 +23,9 @@ import sefirah.domain.model.AudioStreamState
 import sefirah.domain.model.BatteryState
 import sefirah.domain.model.BluetoothState
 import sefirah.domain.model.DndState
+import sefirah.domain.model.PairedDevice
 import sefirah.domain.model.RingerModeState
+import sefirah.domain.model.SocketMessage
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,7 +54,7 @@ class DeviceControlHandler @Inject constructor(
         scope.launch {
             workerManager.rootStatus.collect {
                 devices.pairedDevices.value.filter { it.connectionState.isConnected && it.controls?.version == 1 }
-                    .forEach { sendDeviceStatus(it.deviceId) }
+                    .forEach(::sendDeviceStatus)
             }
         }
     }
@@ -130,8 +132,7 @@ class DeviceControlHandler @Inject constructor(
             val allowed = preferences.preferenceSettings(deviceId).first().allowRemoteDeviceControls
             val status = if (!allowed) "denied" else when (request.control) {
                 "ringer" -> if (request.value !in 0..2) "invalid" else try {
-                    audioManager.ringerMode = request.value
-                    if (audioManager.ringerMode == request.value) "applied" else "unconfirmed"
+                    if (setRingerMode(request.value)) "applied" else "unconfirmed"
                 } catch (_: SecurityException) { "denied" } catch (_: IllegalArgumentException) { "invalid" }
                 "bluetooth" -> when {
                     request.value !in 0..1 -> "invalid"
@@ -156,7 +157,7 @@ class DeviceControlHandler @Inject constructor(
             if (recentRequests.size >= 128) recentRequests.remove(recentRequests.keys.first())
             recentRequests[key] = request to result
             networkManager.sendMessage(deviceId, result)
-            sendDeviceStatus(deviceId)
+            sendDeviceStatus(currentPeer)
         }
     }
 
@@ -210,11 +211,17 @@ class DeviceControlHandler @Inject constructor(
     }
 
     fun handleRingerMode(ringerMode: RingerModeState) {
+        if (ringerMode.mode !in 0..2) return
         try {
-            audioManager.ringerMode = ringerMode.mode
+            setRingerMode(ringerMode.mode)
         } catch (e: Exception) {
             Log.e(TAG, "Error changing ringer mode", e)
         }
+    }
+
+    private fun setRingerMode(mode: Int): Boolean {
+        if (audioManager.ringerMode != mode) audioManager.ringerMode = mode
+        return audioManager.ringerMode == mode
     }
 
     fun handleDndStatus(dndStatus: DndState) {
@@ -246,27 +253,25 @@ class DeviceControlHandler @Inject constructor(
         }
     }
 
-    fun sendDeviceStatus(deviceId: String) {
+    fun sendDeviceStatus(peer: PairedDevice) {
         scope.launch {
-            val peer = devices.getPairedDevice(deviceId) ?: return@launch
-            if (peer.connectionState.isConnected && peer.controls?.version == 1) {
-                deviceInfoPublisher.publish(peer)
+            val currentPeer = devices.getPairedDevice(peer.deviceId) ?: return@launch
+            if (currentPeer.connectionState.isConnected && currentPeer.controls?.version == 1) {
+                deviceInfoPublisher.publish(currentPeer)
             }
         }
         val batteryStatus = getBatteryStatus()
-        val ringerMode = RingerModeState(audioManager.ringerMode)
-        val dndStatus = getDndStatus()
+        networkManager.sendMessage(peer.deviceId, batteryStatus)
 
-        networkManager.sendMessage(deviceId, batteryStatus)
-        networkManager.sendMessage(deviceId, ringerMode)
-        networkManager.sendMessage(deviceId, dndStatus)
-
-        if (bluetoothAdapter != null && nearbyDevicesPermissionGranted(context)) {
-            networkManager.sendMessage(deviceId, getBluetoothState())
+        // Older Android receivers would execute these reports as local commands.
+        if (peer.isDesktop) {
+            networkManager.sendMessage(peer.deviceId, RingerModeState(audioManager.ringerMode))
+            networkManager.sendMessage(peer.deviceId, getDndStatus())
+            getAudioLevels().forEach { networkManager.sendMessage(peer.deviceId, it) }
         }
 
-        getAudioLevels().forEach { audioLevel ->
-            networkManager.sendMessage(deviceId, audioLevel)
+        if (bluetoothAdapter != null && nearbyDevicesPermissionGranted(context)) {
+            networkManager.sendMessage(peer.deviceId, getBluetoothState())
         }
 
         lastBatteryStatus = batteryStatus
@@ -298,11 +303,17 @@ class DeviceControlHandler @Inject constructor(
     }
 
     private fun broadcastRingerMode() {
-        networkManager.broadcastMessage(RingerModeState(audioManager.ringerMode))
+        broadcastAudioStatus(RingerModeState(audioManager.ringerMode))
     }
 
     private fun broadcastDndStatus() {
-        networkManager.broadcastMessage(getDndStatus())
+        broadcastAudioStatus(getDndStatus())
+    }
+
+    private fun broadcastAudioStatus(message: SocketMessage) {
+        devices.pairedDevices.value.filter { it.isDesktop && it.connectionState.isConnected }.forEach {
+            networkManager.sendMessage(it.deviceId, message)
+        }
     }
 
     private fun getBatteryStatus(): BatteryState {

@@ -1,5 +1,7 @@
 package sefirah.domain.model
 
+import java.util.UUID
+
 data class PairedDevice(
     override val deviceId: String,
     override val deviceName: String,
@@ -13,7 +15,12 @@ data class PairedDevice(
     val controls: DeviceControls? = null,
     val presentation: DevicePresentation? = null,
 ) : BaseRemoteDevice() {
-    
+    // The desktop protocol uses UUIDs for identities; Android uses ANDROID_ID.
+    val isDesktop: Boolean
+        get() = deviceId.length == 36 && runCatching {
+            UUID.fromString(deviceId).toString().equals(deviceId, ignoreCase = true)
+        }.getOrDefault(false)
+
     /** Returns enabled addresses sorted by priority, or all addresses if none enabled */
     fun getAddressesToTry(): List<String> {
         val enabled = addresses.filter { it.isEnabled }.sortedBy { it.priority }

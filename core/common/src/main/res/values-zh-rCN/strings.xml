@@ -135,8 +135,8 @@
     <string name="connection_toggle">连接开关</string>
     <string name="trust_all_networks">信任所有网络</string>
     <string name="device_settings">设备设置</string>
-    <string name="remote_device_controls">允许此设备控制响铃和蓝牙</string>
-    <string name="remote_device_controls_description">蓝牙操作需要在本机确认，可能断开蓝牙配件。</string>
+    <string name="remote_device_controls">允许此设备控制响铃、勿扰和蓝牙</string>
+    <string name="remote_device_controls_description">每条命令只执行一次，你可以随时在本机重新调整。</string>
     <string name="bluetooth_confirmation">已配对设备请求更改蓝牙</string>
     <string name="bluetooth_confirmation_description">继续后进入 Android 蓝牙设置，操作可能断开耳机、键鼠和网络。</string>
     <string name="bluetooth_open_settings">继续</string>

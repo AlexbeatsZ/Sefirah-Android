@@ -739,7 +739,7 @@ class NetworkService : Service() {
     ) {
         connections[device.deviceId]?.let { startListeningForDevice(it) }
         sendDeviceInfo(device)
-        deviceControlHandler.sendDeviceStatus(device.deviceId)
+        deviceControlHandler.sendDeviceStatus(device)
 
         if (isNewDevice) {
             appListHandler.sendInstalledApps(device.deviceId)

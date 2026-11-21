@@ -5,6 +5,14 @@ import org.junit.Test
 import sefirah.domain.util.MessageSerializer
 
 class DeviceControlsTest {
+    @Test fun legacyAudioControlCanDistinguishDesktopCommandsFromAndroidStatus() {
+        val peer = PairedDevice("4ed821d3-258c-4a0d-b0d5-b862c9e9a91b", "peer", byteArrayOf())
+        assertTrue(peer.isDesktop)
+        assertTrue(peer.copy(deviceId = peer.deviceId.uppercase()).isDesktop)
+        assertFalse(peer.copy(deviceId = "0123456789abcdef").isDesktop)
+        assertFalse(peer.copy(deviceId = "1-1-1-1-1").isDesktop)
+    }
+
     @Test fun legacyPeerDoesNotAdvertiseNewMessages() {
         val info = MessageSerializer.deserialize("""{"type":"DeviceInfo","deviceName":"old"}""") as DeviceInfo
         assertNull(info.controls)

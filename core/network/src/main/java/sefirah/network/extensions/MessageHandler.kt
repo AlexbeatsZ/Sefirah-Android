@@ -50,8 +50,9 @@ suspend fun NetworkService.handleMessage(device: BaseRemoteDevice, message: Sock
         if (device is PairedDevice) {
             val prefs = preferencesRepository.preferenceSettings(device.deviceId).first()
             val allowed = when (message) {
-                is RingerModeState, is DndState -> prefs.allowRemoteDeviceControls
-                is AudioStreamState -> prefs.allowRemoteDeviceControls && prefs.remoteVolumeControl
+                // Android sends these messages as status, while desktops only send them on user input.
+                is RingerModeState, is DndState -> device.isDesktop && prefs.allowRemoteDeviceControls
+                is AudioStreamState -> device.isDesktop && prefs.allowRemoteDeviceControls && prefs.remoteVolumeControl
                 is ClipboardInfo -> prefs.clipboardSync &&
                     (!message.clipboardType.startsWith("image/") || prefs.imageClipboard)
                 is ClipboardTransfer -> prefs.clipboardSync && prefs.imageClipboard
