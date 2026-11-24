@@ -25,7 +25,6 @@ import sefirah.domain.model.ShareTransfer
 import sefirah.domain.model.SmsAttachmentTransfer
 import sefirah.domain.model.SocketMessage
 import sefirah.transfer.util.getFileMetadata
-import java.io.FileInputStream
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -88,7 +87,7 @@ class FileTransferService @Inject constructor(
     }
 
     private fun pfdSource(pfd: ParcelFileDescriptor, metadata: FileMetadata) = listOf(
-        TransferSource(metadata) { FileInputStream(pfd.fileDescriptor) },
+        TransferSource(metadata) { PositionalFdInputStream(pfd.fileDescriptor) },
     )
 
     private fun send(
