@@ -28,6 +28,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -385,10 +386,18 @@ class NetworkService : Service() {
         certificate: X509Certificate
     ) {
 
-        if (device.connectionState.isForcedDisconnect || !certificate.encoded.contentEquals(device.certificate)) {
+        if (!certificate.encoded.contentEquals(device.certificate)) {
             Log.w(TAG, "Certificate does not match pinned cert for paired device ${authMessage.deviceId}")
             sslSocket.close()
             return
+        }
+        val resumes = authMessage.userInitiated
+        if (device.connectionState.isForcedDisconnect) {
+            if (!resumes) {
+                refuseManuallyDisconnected(sslSocket, writeChannel, device)
+                return
+            }
+            Log.i(TAG, "${device.deviceName} explicitly reconnected; resuming the manually disconnected link")
         }
 
         val connection = DeviceConnection(device.deviceId, sslSocket, readChannel, writeChannel)
@@ -399,7 +408,7 @@ class NetworkService : Service() {
         var connected: PairedDevice? = null
         setConnection(device.deviceId, connection) {
             connected = deviceManager.updatePairedDevice(device.deviceId) { current ->
-                check(!current.connectionState.isForcedDisconnect && current.certificate.contentEquals(certificate.encoded))
+                check((resumes || !current.connectionState.isForcedDisconnect) && current.certificate.contentEquals(certificate.encoded))
                 current.copy(
                     deviceName = authMessage.deviceName,
                     lastConnected = connectedAt,
@@ -410,6 +419,21 @@ class NetworkService : Service() {
             }
         }
         finalizeConnection(connected ?: return, false)
+    }
+
+    /**
+     * A manually disconnected peer may only come back through an explicit connect. Tell an automatic
+     * attempt why it is refused so the peer stops retrying and shows itself as manually disconnected.
+     */
+    private suspend fun refuseManuallyDisconnected(sslSocket: SSLSocket, writeChannel: ByteWriteChannel, device: PairedDevice) {
+        Log.i(TAG, "Refusing automatic connection from ${device.deviceName}: manually disconnected")
+        try {
+            writeChannel.writeStringUtf8(MessageSerializer.serialize(Disconnect) + "\n")
+            writeChannel.flush()
+            delay(REFUSAL_CLOSE_DELAY)
+        } finally {
+            sslSocket.close()
+        }
     }
 
     private suspend fun authenticateNewDevice(
@@ -445,9 +469,7 @@ class NetworkService : Service() {
         startListeningForDevice(connection)
     }
 
-    suspend fun connectPaired(device: PairedDevice) = connectPaired(device, automatic = false)
-
-    private suspend fun connectPaired(device: PairedDevice, automatic: Boolean) {
+    suspend fun connectPaired(device: PairedDevice, automatic: Boolean = false) {
         val attempt = connectionAttempts.getOrPut(device.deviceId) { Mutex() }
         if (!attempt.tryLock()) return
         var socket: SSLSocket? = null
@@ -483,7 +505,7 @@ class NetworkService : Service() {
             val readChannel = sslSocket.inputStream.toByteReadChannel()
             val writeChannel = sslSocket.outputStream.asByteWriteChannel()
 
-            sendAuthMessage(writeChannel)
+            sendAuthMessage(writeChannel, userInitiated = !automatic)
 
             val connection = DeviceConnection(device.deviceId, sslSocket, readChannel, writeChannel)
             val remoteAddress = (sslSocket.remoteSocketAddress as? java.net.InetSocketAddress)?.address?.hostAddress ?: ""
@@ -615,6 +637,12 @@ class NetworkService : Service() {
             }
             disconnectDevice(it, true)
         }
+    }
+
+    /** Refresh a link without telling the peer it was manually disconnected. */
+    suspend fun reconnect(deviceId: String) {
+        deviceManager.getPairedDevice(deviceId)?.let { if (it.connectionState.isConnected) disconnectDevice(it) }
+        deviceManager.getPairedDevice(deviceId)?.let { connectPaired(it) }
     }
 
     suspend fun disconnectDevice(device: PairedDevice, forcedDisconnect: Boolean = false, expected: DeviceConnection? = null) {
@@ -754,7 +782,7 @@ class NetworkService : Service() {
         }
     }
 
-    private suspend fun sendAuthMessage(writeChannel: ByteWriteChannel) {
+    private suspend fun sendAuthMessage(writeChannel: ByteWriteChannel, userInitiated: Boolean = false) {
         val localDevice = deviceManager.localDevice
         val authenticationMessage = Authentication(
             localDevice.deviceId,
@@ -762,6 +790,7 @@ class NetworkService : Service() {
             SslHelper.publicKeyString,
             localDevice.model,
             protocolVersion = 1,
+            userInitiated = userInitiated,
         )
         val jsonMessage = MessageSerializer.serialize(authenticationMessage)
         writeChannel.writeStringUtf8("$jsonMessage\n")
@@ -924,6 +953,8 @@ class NetworkService : Service() {
         }
 
         val PORT_RANGE = 5150..5169
+        /** Lets a refusal's Disconnect line arrive before the socket closes. */
+        private const val REFUSAL_CLOSE_DELAY = 1000L
         const val TAG = "NetworkService"
         const val DEVICE_ID_EXTRA = "device_id"
         const val EXTRA_CONNECTION_DETAILS = "extra_connection_details"

@@ -49,6 +49,8 @@ data class Authentication(
     val publicKey: String,
     val model: String,
     val protocolVersion: Int = 0,
+    /** Set only when the user explicitly asked for this connection; it may resume a manual disconnect on the peer. */
+    val userInitiated: Boolean = false,
 ) : SocketMessage()
 
 @Serializable

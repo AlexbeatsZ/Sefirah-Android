@@ -7,7 +7,6 @@ import com.komu.sekia.di.AppCoroutineScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +21,6 @@ import sefirah.domain.model.UpdateInfo
 import sefirah.domain.interfaces.DeviceManager
 import sefirah.domain.interfaces.NetworkManager
 import javax.inject.Inject
-import kotlin.time.Duration.Companion.milliseconds
 
 @HiltViewModel
 class ConnectionViewModel @Inject constructor(
@@ -74,12 +72,10 @@ class ConnectionViewModel @Inject constructor(
         when {
             syncRequest && currentState.isDisconnected -> connect(device)
             syncRequest && currentState.isConnected -> {
-                // Disconnect first, then reconnect
+                // Refresh is not a manual disconnect: the peer must not be told to stop reconnecting.
                 connectionJobs.remove(device.deviceId)?.cancel()
                 connectionJobs[device.deviceId] = appScope.launch(Dispatchers.IO) {
-                    networkManager.disconnect(device.deviceId)
-                    delay(200.milliseconds)
-                    networkManager.connectPaired(device)
+                    networkManager.reconnect(device.deviceId)
                 }
             }
             !syncRequest && currentState.isConnectedOrConnecting -> {

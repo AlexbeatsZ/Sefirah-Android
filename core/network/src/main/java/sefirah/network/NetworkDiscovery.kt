@@ -266,7 +266,7 @@ class NetworkDiscovery @Inject constructor(
                                     val known = current.addresses.map { it.address }.toSet()
                                     current.copy(addresses = current.addresses + addresses.filter { it !in known }.map { AddressEntry(it) }, port = port)
                                 } ?: return@forEach
-                                networkManager.connectPaired(updatedDevice)
+                                networkManager.connectPaired(updatedDevice, automatic = true)
                             }
                             is DiscoveredDevice -> return@forEach
                             null -> {
@@ -340,7 +340,7 @@ class NetworkDiscovery @Inject constructor(
                                     current.addresses else current.addresses + AddressEntry(senderIp))
                             } ?: continue
                             if (!updated.connectionState.isConnectedOrConnecting && !updated.connectionState.isForcedDisconnect)
-                                networkManager.connectPaired(updated)
+                                networkManager.connectPaired(updated, automatic = true)
                         }
                         null -> networkManager.connectTo(ConnectionDetails(announcement.deviceId, announcement.port, listOf(senderIp)))
                         else -> Unit

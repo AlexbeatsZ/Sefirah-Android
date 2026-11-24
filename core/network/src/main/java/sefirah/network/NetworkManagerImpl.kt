@@ -50,8 +50,12 @@ class NetworkManagerImpl @Inject constructor(
         context.stopService(serviceIntent)
     }
 
-    override suspend fun connectPaired(device: PairedDevice) {
-        requireService().connectPaired(device)
+    override suspend fun connectPaired(device: PairedDevice, automatic: Boolean) {
+        requireService().connectPaired(device, automatic)
+    }
+
+    override suspend fun reconnect(deviceId: String) {
+        requireService().reconnect(deviceId)
     }
 
     override suspend fun connectTo(connectionDetails: ConnectionDetails) {
