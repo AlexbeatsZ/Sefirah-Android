@@ -23,6 +23,22 @@ by their UUID device IDs). Android accepts these legacy messages as commands onl
 from desktops with the relevant per-peer opt-in. This also prevents an older
 Android peer from applying another Android's status during a mixed-version rollout.
 
+Legacy Android DND rules survive an app update. On the K70 on 2026-11-24,
+the system restored `implicit_com.castle.sefirah` with `STATE_TRUE` from its
+notification policy at boot (`readXml`), although the earlier rollout had
+verified Zen OFF. The loaded rule retained an activation timestamp from
+2026-11-20. A global Zen OFF observation alone does not establish that an
+app-owned rule's persisted condition is inactive.
+
+For recovery from this legacy state, inspect both the live automatic rule and
+the persisted notification policy. Remove only `implicit_com.castle.sefirah`
+through the notification service's automatic-rule API, using an authorized
+privileged caller when necessary. Do not edit the policy XML or remove other
+apps' rules. The K70 cleanup verified the rule absent in both places, Zen OFF,
+and the sleeping/driving rules preserved. No reboot was performed. This is
+device-state cleanup; explicit desktop DND control remains available and can
+create the app's implicit rule again when requested.
+
 New Bluetooth control defaults to denied. Android never invokes the deprecated
 enable/disable APIs.
 When a shell-UID worker (root launcher or Shizuku) is alive, Android declares
