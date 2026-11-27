@@ -22,6 +22,9 @@ import sefirah.domain.interfaces.NetworkManager
 import sefirah.domain.interfaces.PreferencesRepository
 import sefirah.domain.model.ConnectionDetails
 import sefirah.worker.WorkerManager
+import android.util.Base64
+import sefirah.common.util.CertificateIdentity
+import sefirah.network.util.SslHelper
 
 /** Versioned local API for ADB/root automation; never returns private keys or arbitrary file data. */
 class ManagementProvider : ContentProvider() {
@@ -69,6 +72,18 @@ class ManagementProvider : ContentProvider() {
                             entry.network().disconnect(requireNotNull(arg))
                             JSONObject().put("accepted", true)
                         }
+                        "unpair", "remove" -> {
+                            entry.network().unpair(requireNotNull(arg))
+                            JSONObject().put("accepted", true)
+                        }
+                        "rebind" -> {
+                            val request = JSONObject(requireNotNull(arg))
+                            entry.network().rebind(request.getString("deviceId"),
+                                Base64.decode(request.getString("certificate"), Base64.NO_WRAP),
+                                request.getString("expectedFingerprint"), request.getString("publicKeyFingerprint"),
+                                request.getString("verificationCode"))
+                            JSONObject().put("accepted", true)
+                        }
                         "options" -> {
                             val request = JSONObject(requireNotNull(arg))
                             if (request.has("clipboard")) entry.preferences().saveClipboardWorkerEnabled(request.getBoolean("clipboard"))
@@ -95,8 +110,12 @@ class ManagementProvider : ContentProvider() {
     private suspend fun status(entry: Dependencies): JSONObject {
         val devices = entry.devices()
         val local = devices.localDeviceFlow.filterNotNull().first()
+        // Local identity can load before the pairing database; wait for the repository barrier.
+        devices.getPairedDevice("")
         val pending = devices.pendingDeviceApproval.value
-        return JSONObject().put("apiVersion", 1)
+        return JSONObject().put("apiVersion", 2)
+            .put("publicKeyFingerprint", CertificateIdentity.fingerprint(SslHelper.certificate))
+            .put("certificate", Base64.encodeToString(SslHelper.certificate.encoded, Base64.NO_WRAP))
             .put("deviceId", local.deviceId).put("deviceName", local.deviceName)
             .put("version", com.castle.sefirah.BuildConfig.VERSION_NAME)
             .put("rootClipboardStatus", entry.workers().rootStatus.value.name)
@@ -104,10 +123,12 @@ class ManagementProvider : ContentProvider() {
             .put("paired", JSONArray(devices.pairedDevices.value.map { peer ->
                 JSONObject().put("deviceId", peer.deviceId).put("deviceName", peer.deviceName)
                     .put("connected", peer.connectionState.isConnected).put("address", peer.address)
+                    .put("publicKeyFingerprint", CertificateIdentity.fingerprint(peer.certificate))
             }))
             .put("discovered", JSONArray(devices.discoveredDevices.value.values.map { peer ->
                 JSONObject().put("deviceId", peer.deviceId).put("deviceName", peer.deviceName)
                     .put("verificationCode", peer.verificationCode).put("address", peer.address).put("port", peer.port)
+                    .put("publicKeyFingerprint", CertificateIdentity.fingerprint(peer.certificate.encoded))
             }))
             .put("pending", pending?.let { JSONObject().put("deviceId", it.deviceId)
                 .put("verificationCode", it.verificationCode) } ?: JSONObject.NULL)

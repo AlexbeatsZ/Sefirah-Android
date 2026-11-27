@@ -68,6 +68,7 @@ import sefirah.domain.util.MessageSerializer
 import sefirah.media.PlaybackFeature
 import sefirah.media.RemotePlaybackFeature
 import sefirah.network.extensions.cancelPairingVerificationNotification
+import sefirah.common.util.CertificateIdentity
 import sefirah.network.extensions.handleMessage
 import sefirah.network.extensions.startForegroundNotification
 import sefirah.network.extensions.updateNotification
@@ -386,7 +387,7 @@ class NetworkService : Service() {
         certificate: X509Certificate
     ) {
 
-        if (!certificate.encoded.contentEquals(device.certificate)) {
+        if (!CertificateIdentity.matches(certificate.encoded, device.certificate)) {
             Log.w(TAG, "Certificate does not match pinned cert for paired device ${authMessage.deviceId}")
             sslSocket.close()
             return
@@ -407,8 +408,9 @@ class NetworkService : Service() {
 
         var connected: PairedDevice? = null
         setConnection(device.deviceId, connection) {
-            connected = deviceManager.updatePairedDevice(device.deviceId) { current ->
-                check((resumes || !current.connectionState.isForcedDisconnect) && current.certificate.contentEquals(certificate.encoded))
+            connected = checkNotNull(deviceManager.updatePairedDevice(device.deviceId) { current ->
+                check((resumes || !current.connectionState.isForcedDisconnect) &&
+                    CertificateIdentity.matches(certificate.encoded, current.certificate))
                 current.copy(
                     deviceName = authMessage.deviceName,
                     lastConnected = connectedAt,
@@ -416,7 +418,7 @@ class NetworkService : Service() {
                     address = address,
                     connectionState = ConnectionState.Connected,
                 )
-            }
+            })
         }
         finalizeConnection(connected ?: return, false)
     }
@@ -639,6 +641,59 @@ class NetworkService : Service() {
         }
     }
 
+    /** Incoming and outgoing installs recheck the stored identity under connectionGates. */
+    suspend fun unpair(deviceId: String) {
+        var old: DeviceConnection? = null
+        try {
+            connectionGates.getOrPut(deviceId) { Mutex() }.withLock {
+                requireNotNull(deviceManager.getPairedDevice(deviceId)) { "Device is not paired" }
+                deviceManager.removePairedDevice(deviceId)
+                reconnector.cancel(deviceId)
+                old = connections.remove(deviceId)
+                old?.sendDisconnect()
+                featureManager.onDisconnect(deviceId)
+                clearPendingApproval(deviceId)
+                cancelPairingVerificationNotification(deviceId)
+                deviceManager.removeDiscoveredDevice(deviceId)
+            }
+        } finally {
+            withContext(NonCancellable) { old?.close() }
+        }
+    }
+
+    suspend fun rebind(deviceId: String, certificate: ByteArray, expectedFingerprint: String,
+        publicKeyFingerprint: String, verificationCode: String) {
+        val replacement = CertificateIdentity.certificate(certificate)
+        require(CertificateIdentity.fingerprint(replacement) == publicKeyFingerprint &&
+            SslHelper.getVerificationCode(replacement, SslHelper.certificate) == verificationCode) {
+            "New identity fingerprint or verification code mismatch"
+        }
+        var old: DeviceConnection? = null
+        try {
+            connectionGates.getOrPut(deviceId) { Mutex() }.withLock {
+                // A failed write leaves the original identity and live transport intact.
+                checkNotNull(deviceManager.updatePairedDevice(deviceId) {
+                    require(CertificateIdentity.fingerprint(it.certificate) == expectedFingerprint) {
+                        "Stored identity fingerprint mismatch"
+                    }
+                    it.copy(certificate = certificate, connectionState = ConnectionState.Disconnected(), controls = null)
+                }) { "Device is not paired" }
+                reconnector.cancel(deviceId)
+                old = connections.remove(deviceId)
+                old?.sendDisconnect()
+                featureManager.onDisconnect(deviceId)
+                Log.i(TAG, "Explicit identity rebind for $deviceId: $expectedFingerprint -> $publicKeyFingerprint")
+            }
+        } finally {
+            withContext(NonCancellable) { old?.close() }
+        }
+        scope.launch {
+            // Let any dial of the previous key finish before starting the replacement.
+            connectionAttempts.getOrPut(deviceId) { Mutex() }.withLock { }
+            deviceManager.getPairedDevice(deviceId)?.let { connectPaired(it) }
+        }
+    }
+
     /** Refresh a link without telling the peer it was manually disconnected. */
     suspend fun reconnect(deviceId: String) {
         deviceManager.getPairedDevice(deviceId)?.let { if (it.connectionState.isConnected) disconnectDevice(it) }
@@ -742,7 +797,12 @@ class NetworkService : Service() {
             getDevice = { deviceManager.getDevice(it) },
             onMessage = { device, message ->
                 if (connections[device.deviceId] === connection) {
-                    if (message is Disconnect && device is PairedDevice)
+                    if (message is PairMessage && device is PairedDevice) {
+                        if (message.pair && !connection.pairingAcknowledged) {
+                            connection.pairingAcknowledged = true
+                            connection.sendMessage(PairMessage(true))
+                        }
+                    } else if (message is Disconnect && device is PairedDevice)
                         disconnectDevice(device, true, expected = connection)
                     else handleMessage(device, message)
                 }

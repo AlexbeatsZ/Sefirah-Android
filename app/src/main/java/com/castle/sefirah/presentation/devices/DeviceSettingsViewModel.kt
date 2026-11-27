@@ -139,8 +139,7 @@ class DeviceSettingsViewModel @Inject constructor(
 
     fun removeDevice() {
         appScope.launch(Dispatchers.IO) {
-            networkManager.disconnect(deviceId)
-            deviceManager.removePairedDevice(deviceId)
+            networkManager.unpair(deviceId)
         }
     }
 

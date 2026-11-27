@@ -66,6 +66,12 @@ class NetworkManagerImpl @Inject constructor(
         requireService().disconnect(deviceId)
     }
 
+    override suspend fun unpair(deviceId: String) = requireService().unpair(deviceId)
+
+    override suspend fun rebind(deviceId: String, certificate: ByteArray, expectedFingerprint: String,
+        publicKeyFingerprint: String, verificationCode: String) =
+        requireService().rebind(deviceId, certificate, expectedFingerprint, publicKeyFingerprint, verificationCode)
+
     override fun broadcastMessage(message: SocketMessage) {
         networkService?.broadcastMessage(message)
     }

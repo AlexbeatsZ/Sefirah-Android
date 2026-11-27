@@ -5,6 +5,7 @@ import android.util.Base64
 import kotlinx.coroutines.runBlocking
 import org.bouncycastle.util.Arrays
 import sefirah.common.util.CryptoUtils
+import sefirah.common.util.CertificateIdentity
 import sefirah.common.util.getDeviceKeyStore
 import java.io.ByteArrayInputStream
 import java.security.MessageDigest
@@ -39,10 +40,10 @@ object SslHelper {
     /**
      * Returns a TLS SSLContext for both client and server use.
      *
-     * @param certificate When null or empty, uses trust-all (any peer cert accepted). When set, only that certificate is trusted (client connections to paired devices).
+     * @param certificate Null is for discovery before application authentication. Otherwise pin SPKI.
      */
     fun sslContext(certificate: ByteArray? = null): SSLContext {
-        val trustManager = if (certificate != null && certificate.isNotEmpty()) {
+        val trustManager = if (certificate != null) {
             getTrustManager(certificate)
         } else {
             trustAllCerts
@@ -67,8 +68,8 @@ object SslHelper {
             private fun checkPinned(chain: Array<X509Certificate>) {
                 if (chain.isEmpty()) throw SSLException("No certificate in chain")
                 val leaf = chain[0]
-                if (!leaf.encoded.contentEquals(certificateEncoded)) {
-                    throw SSLException("Certificate does not match pinned certificate")
+                if (!CertificateIdentity.matches(leaf.encoded, certificateEncoded)) {
+                    throw SSLException("Public key does not match pinned device identity")
                 }
             }
         }

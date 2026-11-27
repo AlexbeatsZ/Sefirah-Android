@@ -235,6 +235,7 @@ class DeviceManagerImpl @Inject constructor(
                 Log.d(TAG, "Device $deviceId removed")
             } catch (e: Exception) {
                 Log.e(TAG, "Error removing device", e)
+                throw e
             }
         }
     }

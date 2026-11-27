@@ -9,6 +9,11 @@ import javax.inject.Inject
 @HiltAndroidApp
 class MainApplication : Application(), Configuration.Provider {
 
+    override fun onCreate() {
+        super.onCreate()
+        sefirah.common.util.CryptoUtils.initialize(this)
+    }
+
     @Inject lateinit var workerFactory: HiltWorkerFactory
 
     override val workManagerConfiguration: Configuration

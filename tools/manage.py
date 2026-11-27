@@ -8,7 +8,7 @@ import subprocess
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--serial", "-s", required=True)
-parser.add_argument("method", choices=["status", "start", "stop", "connect", "pair", "approve", "disconnect", "options"])
+parser.add_argument("method", choices=["status", "start", "stop", "connect", "pair", "approve", "disconnect", "unpair", "remove", "rebind", "options"])
 parser.add_argument("argument", nargs="?")
 args = parser.parse_args()
 command = ["content", "call", "--uri", "content://com.castle.sefirah.management", "--method", args.method]

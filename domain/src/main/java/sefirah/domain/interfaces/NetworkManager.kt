@@ -15,6 +15,9 @@ interface NetworkManager {
     suspend fun connectTo(connectionDetails: ConnectionDetails)
     /** Manual disconnect: the peer is told, and neither end reconnects automatically. */
     suspend fun disconnect(deviceId: String)
+    suspend fun unpair(deviceId: String)
+    suspend fun rebind(deviceId: String, certificate: ByteArray, expectedFingerprint: String,
+        publicKeyFingerprint: String, verificationCode: String)
     /** Drop and re-establish a live link; unlike [disconnect] it is not a manual disconnect. */
     suspend fun reconnect(deviceId: String)
     fun broadcastMessage(message: SocketMessage)

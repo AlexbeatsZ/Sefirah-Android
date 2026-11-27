@@ -42,6 +42,7 @@ class DeviceConnection(
     private val outbound = Channel<SocketMessage>(Channel.UNLIMITED)
     private var listeningJob: Job? = null
     @Volatile private var closed = false
+    var pairingAcknowledged = false
 
     private val writerJob = scope.launch {
         try {
